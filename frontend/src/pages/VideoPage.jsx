@@ -2,8 +2,24 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom";
 import { videoAPI, chatAPI, notesAPI, bookmarkAPI } from "../services/api";
 import Icon from "../components/Icon";
-import PoseTracker from "../components/PoseTracker";
 import DancePracticeWorkspace from "../components/dance/DancePracticeWorkspace";
+import { drawSkeleton } from "../components/dance/usePoseTracking";
+
+let cachedMultiDetector = null;
+async function getMultiDetector() {
+  if (cachedMultiDetector) return cachedMultiDetector;
+  const [tf, poseDetection] = await Promise.all([
+    import("@tensorflow/tfjs"),
+    import("@tensorflow-models/pose-detection"),
+  ]);
+  try { await tf.setBackend("webgl"); } catch { await tf.setBackend("cpu"); }
+  await tf.ready();
+  cachedMultiDetector = await poseDetection.createDetector(
+    poseDetection.SupportedModels.MoveNet,
+    { modelType: poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING, enableSmoothing: true, enableTracking: true }
+  );
+  return cachedMultiDetector;
+}
 import { useToast } from "../context/ToastContext";
 import { SkeletonSegment } from "../components/Skeleton";
 import "./VideoPage.css";
@@ -51,6 +67,19 @@ export default function VideoPage() {
   const [generatingQuiz, setGeneratingQuiz] = useState(false);
   const [mirror, setMirror]             = useState(false);
   const [practiceOpen, setPracticeOpen] = useState(false);
+  const [dancerTracking, setDancerTracking] = useState("idle"); // idle | requesting | active | error
+  const [dancerKpCount, setDancerKpCount] = useState(0);
+  const [personCount, setPersonCount] = useState(0);
+  const [selectedPersonIdx, setSelectedPersonIdx] = useState(-1); // -1 = auto (most centered)
+  const selectedPersonIdxRef = useRef(-1);
+  const dancerCanvasRef = useRef(null);
+  const dancerScreenStreamRef = useRef(null);
+  const dancerScreenVideoRef = useRef(null);
+  const dancerRafRef = useRef(null);
+  const dancerStoppedRef = useRef(true);
+  const dancerOffscreenRef = useRef(null);
+  const [isPlayerFullscreen, setIsPlayerFullscreen] = useState(false);
+  const playerWrapRef = useRef(null);
   const [leftTab, setLeftTab]           = useState(() => searchParams.get("tab") || "topics");
   const [playerTime, setPlayerTime]     = useState(0);
   const [playerDuration, setPlayerDuration] = useState(0);
@@ -126,6 +155,33 @@ export default function VideoPage() {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, sending]);
 
+  useEffect(() => { selectedPersonIdxRef.current = selectedPersonIdx; }, [selectedPersonIdx]);
+
+  // Intercept YouTube's native fullscreen when dancer tracking is active — redirect to our wrapper
+  useEffect(() => {
+    const onFsChange = () => {
+      const fsEl = document.fullscreenElement;
+      const isOurs = fsEl === playerWrapRef.current;
+      setIsPlayerFullscreen(isOurs);
+      // If YouTube iframe went fullscreen while tracking, exit and re-enter on our wrapper
+      if (fsEl && fsEl.id === "yt-player" && dancerStoppedRef.current === false) {
+        document.exitFullscreen().then(() => {
+          playerWrapRef.current?.requestFullscreen?.().catch(() => {});
+        }).catch(() => {});
+      }
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+
+  const handlePlayerFullscreen = () => {
+    if (document.fullscreenElement === playerWrapRef.current) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      playerWrapRef.current?.requestFullscreen?.().catch(() => {});
+    }
+  };
+
   const seekTo    = (s) => playerRef.current?.seekTo?.(s, true);
   const stopLoop  = () => { clearInterval(loopRef.current); loopRef.current = null; };
   const setSpeed  = (r) => playerRef.current?.setPlaybackRate?.(r);
@@ -159,6 +215,177 @@ export default function VideoPage() {
       if (t >= step.endTime) seekTo(step.startTime);
     }, 500);
   };
+
+  const stopDancerTracking = () => {
+    dancerStoppedRef.current = true;
+    if (dancerRafRef.current) cancelAnimationFrame(dancerRafRef.current);
+    dancerRafRef.current = null;
+    dancerScreenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    dancerScreenStreamRef.current = null;
+    if (dancerScreenVideoRef.current) {
+      dancerScreenVideoRef.current.srcObject = null;
+      dancerScreenVideoRef.current = null;
+    }
+    dancerOffscreenRef.current = null;
+    const cc = dancerCanvasRef.current;
+    if (cc) cc.getContext("2d")?.clearRect(0, 0, cc.width, cc.height);
+    setDancerTracking("idle");
+    setDancerKpCount(0);
+    setPersonCount(0);
+  };
+
+  const startDancerTracking = async () => {
+    setDancerTracking("requesting");
+    dancerStoppedRef.current = false;
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: { ideal: 10, max: 15 } },
+        audio: false,
+      });
+      if (dancerStoppedRef.current) { stream.getTracks().forEach((t) => t.stop()); return; }
+
+      dancerScreenStreamRef.current = stream;
+      const vid = document.createElement("video");
+      vid.srcObject = stream;
+      vid.muted = true;
+      vid.playsInline = true;
+      dancerScreenVideoRef.current = vid;
+      await vid.play();
+
+      stream.getVideoTracks()[0].addEventListener("ended", stopDancerTracking);
+      setDancerTracking("active");
+
+      const detector = await getMultiDetector();
+      if (dancerStoppedRef.current) return;
+
+      const tick = async () => {
+        if (dancerStoppedRef.current) return;
+
+        const canvas = dancerCanvasRef.current;
+        const playerEl = document.getElementById("yt-player");
+        const sv = dancerScreenVideoRef.current;
+
+        if (!canvas || !playerEl || !sv || sv.readyState < 2) {
+          dancerRafRef.current = requestAnimationFrame(tick);
+          return;
+        }
+
+        // Crop capture to player bounds (works identically in fullscreen)
+        const rect = playerEl.getBoundingClientRect();
+        const scaleX = sv.videoWidth / window.innerWidth;
+        const scaleY = sv.videoHeight / window.innerHeight;
+        const cropX = Math.max(0, Math.round(rect.left * scaleX));
+        const cropY = Math.max(0, Math.round(rect.top * scaleY));
+        const cropW = Math.max(1, Math.round(rect.width * scaleX));
+        const cropH = Math.max(1, Math.round(rect.height * scaleY));
+
+        const prev = dancerOffscreenRef.current;
+        const offscreen = (prev && prev.width === cropW && prev.height === cropH)
+          ? prev
+          : (() => { const c = document.createElement("canvas"); c.width = cropW; c.height = cropH; dancerOffscreenRef.current = c; return c; })();
+
+        offscreen.getContext("2d").drawImage(sv, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+        try {
+          const poses = await detector.estimatePoses(offscreen);
+          const ctx = canvas.getContext("2d");
+
+          // Canvas is inside .vp-player — use its actual CSS dimensions
+          const cw = canvas.offsetWidth || rect.width || 640;
+          const ch = canvas.offsetHeight || rect.height || 360;
+          if (canvas.width !== cw || canvas.height !== ch) {
+            canvas.width = cw;
+            canvas.height = ch;
+          }
+          ctx.clearRect(0, 0, cw, ch);
+
+          if (poses?.length) {
+            // Sort poses left-to-right by horizontal center for stable indexing
+            const sorted = [...poses].sort((a, b) => {
+              const avgX = (p) => {
+                const vis = p.keypoints.filter((k) => k.score > 0.2);
+                return vis.length ? vis.reduce((s, k) => s + k.x, 0) / vis.length : 0;
+              };
+              return avgX(a) - avgX(b);
+            });
+
+            // Determine which person to highlight
+            let activeIdx = 0;
+            const selIdx = selectedPersonIdxRef.current;
+            if (selIdx < 0 || selIdx >= sorted.length) {
+              const cx = cropW / 2;
+              let bestDist = Infinity;
+              sorted.forEach((pose, i) => {
+                const vis = pose.keypoints.filter((k) => k.score > 0.2);
+                if (!vis.length) return;
+                const avgX = vis.reduce((s, k) => s + k.x, 0) / vis.length;
+                const d = Math.abs(avgX - cx);
+                if (d < bestDist) { bestDist = d; activeIdx = i; }
+              });
+            } else {
+              activeIdx = selIdx;
+            }
+
+            // Draw directly onto player-sized canvas — no translation needed
+            const multiPerson = sorted.length > 1;
+            const scaleW = cw / cropW;
+            const scaleH = ch / cropH;
+
+            sorted.forEach((pose, i) => {
+              const isActive = i === activeIdx;
+              drawSkeleton(ctx, pose.keypoints, cw, ch, cropW, cropH, {
+                line: isActive ? "rgba(238,146,104,0.85)" : "rgba(255,255,255,0.18)",
+                dot: isActive ? "rgba(238,146,104,1)" : "rgba(255,255,255,0.28)",
+                dotOutline: isActive ? "rgba(255,242,220,0.3)" : "rgba(255,255,255,0.08)",
+                lineWidth: isActive ? 3 : 1.5,
+                dotRadius: isActive ? 5 : 3,
+              });
+
+              if (multiPerson) {
+                const vis = pose.keypoints.filter((k) => k.score > 0.2);
+                const head = pose.keypoints.find((k) => k.name === "nose" && k.score > 0.2)
+                  || vis.sort((a, b) => a.y - b.y)[0];
+                if (head) {
+                  const lx = head.x * scaleW;
+                  const ly = Math.max(14, head.y * scaleH - 14);
+                  ctx.save();
+                  ctx.font = `bold ${isActive ? 13 : 11}px monospace`;
+                  ctx.textAlign = "center";
+                  ctx.fillStyle = isActive ? "rgba(238,146,104,0.95)" : "rgba(255,255,255,0.4)";
+                  ctx.fillText(String(i + 1), lx, ly);
+                  ctx.restore();
+                }
+              }
+            });
+
+            const activePose = sorted[activeIdx];
+            setDancerKpCount(activePose ? activePose.keypoints.filter((k) => k.score > 0.2).length : 0);
+            setPersonCount(sorted.length);
+          } else {
+            setDancerKpCount(0);
+            setPersonCount(0);
+          }
+        } catch {}
+
+        dancerRafRef.current = requestAnimationFrame(tick);
+      };
+
+      dancerRafRef.current = requestAnimationFrame(tick);
+    } catch (err) {
+      dancerStoppedRef.current = true;
+      const dismissed = err?.name === "NotAllowedError" || err?.name === "AbortError";
+      setDancerTracking(dismissed ? "idle" : "error");
+    }
+  };
+
+  // Cleanup dancer tracking on unmount
+  useEffect(() => {
+    return () => {
+      dancerStoppedRef.current = true;
+      if (dancerRafRef.current) cancelAnimationFrame(dancerRafRef.current);
+      dancerScreenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
 
   const formatAiError = (err, fallback) => {
     const msg = err?.response?.data?.error || err?.message || fallback;
@@ -530,7 +757,7 @@ export default function VideoPage() {
         {/* Left column */}
         <div className="vp-left">
           {/* Player */}
-          <div className={`vp-player${mirror ? " mirrored" : ""}`}>
+          <div className={`vp-player${mirror ? " mirrored" : ""}`} ref={playerWrapRef}>
             <iframe
               id="yt-player"
               title="video"
@@ -546,6 +773,18 @@ export default function VideoPage() {
                     : (activeCaption.correctedText || activeCaption.text)}
                 </span>
               </div>
+            )}
+            {dancerTracking === "active" && (
+              <>
+                <canvas ref={dancerCanvasRef} className="vp-dancer-canvas" />
+                <button
+                  className="vp-fw-fs-btn"
+                  onClick={handlePlayerFullscreen}
+                  title={isPlayerFullscreen ? "Exit fullscreen" : "Fullscreen with skeleton overlay"}
+                >
+                  <Icon name={isPlayerFullscreen ? "compress" : "expand"} size={14} stroke={2} />
+                </button>
+              </>
             )}
           </div>
 
@@ -785,7 +1024,63 @@ export default function VideoPage() {
                     </button>
                   </div>
                   <div className="vp-practice-card">
-                    <PoseTracker />
+                    <div className="vp-practice-card-head">
+                      <span className="vp-practice-kicker">Video pose tracking</span>
+                      <p className="vp-practice-title">Dancer skeleton</p>
+                    </div>
+                    {dancerTracking !== "active" ? (
+                      <button
+                        className="vp-add-btn vp-add-btn-wide vp-pose-toggle"
+                        onClick={startDancerTracking}
+                        disabled={dancerTracking === "requesting"}
+                      >
+                        <Icon name="dance" size={13} />
+                        {dancerTracking === "requesting" ? "Waiting for share…" : dancerTracking === "error" ? "Retry" : "Start Pose Tracking"}
+                      </button>
+                    ) : (
+                      <button
+                        className="vp-add-btn vp-add-btn-wide vp-pose-toggle active"
+                        onClick={stopDancerTracking}
+                      >
+                        <Icon name="stop" size={13} /> Stop Tracking
+                      </button>
+                    )}
+                    {dancerTracking === "active" && (
+                      <div className="vp-dancer-status">
+                        <span className="vp-dancer-dot" />
+                        {personCount > 0
+                          ? `${personCount} ${personCount === 1 ? "person" : "people"} · ${dancerKpCount}/17 joints`
+                          : "Detecting…"}
+                      </div>
+                    )}
+                    {dancerTracking === "active" && personCount > 1 && (
+                      <div className="vp-dancer-picker">
+                        <span className="vp-dancer-picker-label">Track:</span>
+                        <button
+                          className={`vp-dancer-pick-btn${selectedPersonIdx === -1 ? " active" : ""}`}
+                          onClick={() => setSelectedPersonIdx(-1)}
+                          title="Auto-select most centered person"
+                        >
+                          Auto
+                        </button>
+                        {Array.from({ length: personCount }, (_, i) => (
+                          <button
+                            key={i}
+                            className={`vp-dancer-pick-btn${selectedPersonIdx === i ? " active" : ""}`}
+                            onClick={() => setSelectedPersonIdx(i)}
+                            title={`Track person ${i + 1} (left to right)`}
+                          >
+                            {i + 1}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {dancerTracking === "idle" && (
+                      <p className="vp-pose-hint">Overlays a skeleton on the video to show the dancer's moves. Works in fullscreen too.</p>
+                    )}
+                    {dancerTracking === "error" && (
+                      <p className="vp-inline-error">Screen capture cancelled or unavailable.</p>
+                    )}
                   </div>
                 </div>
                 {/* Practice Mode launch */}

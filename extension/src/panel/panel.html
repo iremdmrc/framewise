@@ -820,12 +820,18 @@
       gap: 7px;
     }
 
-    /* ── Chat messages (in dock) ── */
+    /* ── Chat tab layout ── */
+    #tab-chat.open {
+      min-height: 320px;
+    }
+
+    /* ── Chat messages ── */
     #chat-area {
       display: flex;
       flex-direction: column;
       gap: 7px;
-      max-height: 280px;
+      min-height: 160px;
+      max-height: 240px;
       overflow-y: auto;
       padding: 8px 12px 4px;
       scrollbar-width: thin;
@@ -989,6 +995,52 @@
       letter-spacing: .05em;
       color: var(--fw-ink-3);
     }
+
+    /* ── Video thumbnail ── */
+    .fw-video-thumb {
+      width: 80px;
+      height: 45px;
+      border-radius: 6px;
+      object-fit: cover;
+      flex-shrink: 0;
+      border: 1px solid var(--fw-rule);
+      display: none;
+    }
+    .fw-video-thumb.loaded { display: block; }
+
+    /* ── App icon (auth + no-video states) ── */
+    .fw-app-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 14px;
+    }
+
+    /* ── Header voice style select ── */
+    .fw-voice-style {
+      display: none;
+      background: var(--fw-surface);
+      border: 1px solid var(--fw-rule);
+      border-radius: 6px;
+      color: var(--fw-ink-3);
+      font-family: 'Geist', system-ui, sans-serif;
+      font-size: 10.5px;
+      padding: 4px 5px;
+      cursor: pointer;
+      outline: none;
+      max-width: 64px;
+    }
+    .fw-voice-style.visible { display: block; }
+    .fw-voice-style:focus { border-color: var(--fw-rust); }
+
+    /* ── No video state ── */
+    #no-video-state {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 40px 20px 24px;
+      gap: 14px;
+    }
   </style>
 </head>
 <body>
@@ -1036,10 +1088,15 @@
     </div>
 
     <div class="fw-header-actions">
-      <!-- Voice toggle -->
-      <button class="fw-icon-btn" id="toggle-voice-btn" title="Voice replies off">
-        <svg viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14" stroke-linecap="round"/></svg>
+      <!-- Voice toggle + style (style only visible when voice is on) -->
+      <button class="fw-icon-btn" id="toggle-voice-btn" title="Enable voice replies">
+        <svg id="voice-on-icon" viewBox="0 0 24 24" style="display:none"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14" stroke-linecap="round"/></svg>
+        <svg id="voice-off-icon" viewBox="0 0 24 24"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
       </button>
+      <select id="voice-profile-input" class="fw-voice-style" title="Voice style">
+        <option value="default">Narrator</option>
+        <option value="coach">Coach</option>
+      </select>
       <!-- Theme toggle -->
       <button class="fw-icon-btn" id="theme-toggle-btn" title="Toggle theme">
         <!-- Icon replaced by JS -->
@@ -1054,11 +1111,7 @@
 
     <!-- Not signed in -->
     <div id="not-logged-in" style="display:none;">
-      <div class="fw-lock-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>
-        </svg>
-      </div>
+      <img src="../../icons/icon128.png" class="fw-app-icon" alt="Framewise" />
       <p class="fw-screen-title">Not signed in</p>
       <p class="fw-screen-sub">Sign in to Framewise in your browser, then retry below.</p>
       <button class="primary" id="retry-btn" style="width:100%;max-width:200px;">Retry</button>
@@ -1073,6 +1126,7 @@
       <!-- Video context -->
       <div class="fw-video-strip">
         <div class="fw-video-title-row">
+          <img id="video-thumb" class="fw-video-thumb" alt="" />
           <div id="video-info"></div>
           <span id="video-mode" class="video-mode-badge" style="display:none;"></span>
         </div>
@@ -1096,6 +1150,14 @@
 
       <!-- Progress bar (segment indicators) -->
       <div class="fw-progress" id="fw-progress-bar" style="display:none;"></div>
+
+      <!-- No video detected state -->
+      <div id="no-video-state">
+        <img src="../../icons/icon128.png" class="fw-app-icon" alt="Framewise" />
+        <p class="fw-screen-title">No video detected</p>
+        <p class="fw-screen-sub">Navigate to a YouTube video and Framewise will load it automatically.</p>
+        <button class="primary" id="browse-youtube-btn" style="width:100%;max-width:200px;">Open YouTube</button>
+      </div>
 
       <!-- Analyze button -->
       <button id="analyze-btn">
@@ -1128,6 +1190,37 @@
             <div id="segments">
               <p class="fw-empty">Analyze this video to generate the topic timeline.</p>
             </div>
+          </div>
+        </div>
+
+        <!-- CHAT -->
+        <div class="fw-section" id="section-chat">
+          <button class="fw-section-hdr" data-section="chat">
+            <span class="fw-section-hdr-icon">
+              <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            </span>
+            <span class="fw-section-hdr-label">Chat</span>
+            <span class="fw-section-chevron">
+              <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+            </span>
+          </button>
+          <div id="tab-chat" class="fw-section-body">
+            <div id="chat-area"></div>
+            <div class="fw-dock-chips" id="chat-chips">
+              <button class="chip-btn" data-msg="Summarize this video">Summarize</button>
+              <button class="chip-btn" data-msg="What are the key points?">Key points</button>
+              <button class="chip-btn" data-msg="Quiz me on this video">Quiz me</button>
+              <button class="chip-btn" data-msg="What happens at the beginning?">Intro</button>
+            </div>
+            <form id="chat-form">
+              <div class="composer-wrap">
+                <svg viewBox="0 0 24 24"><path d="M12 3v6M12 15v6M3 12h6M15 12h6"/><path d="M6 6l3 3M15 15l3 3M6 18l3-3M15 9l3-3"/></svg>
+                <input id="chat-input" placeholder="Ask about this video…" />
+              </div>
+              <button id="send-btn" type="button">
+                <svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-3-7-7-1z"/></svg>
+              </button>
+            </form>
           </div>
         </div>
 
@@ -1243,50 +1336,17 @@
 
       </div><!-- .fw-sections -->
 
-      <!-- Hidden stub — keeps JS references to tab-chat safe -->
-      <div id="tab-chat" style="display:none;"></div>
-
     </div><!-- #app-screen -->
   </div><!-- #main -->
 
-  <!-- Bottom dock — persistent chat -->
-  <div class="fw-dock" id="fw-dock">
-    <div id="chat-area"></div>
-    <div class="fw-dock-chips" id="chat-chips">
-      <button class="chip-btn" data-msg="Summarize this video">Summarize</button>
-      <button class="chip-btn" data-msg="What are the key points?">Key points</button>
-      <button class="chip-btn" data-msg="Quiz me on this video">Quiz me</button>
-      <button class="chip-btn" data-msg="What happens at the beginning?">Intro</button>
-    </div>
-    <div class="fw-dock-opts">
-      <label class="fw-dock-opt-label">
-        <input type="checkbox" id="voice-mode-input" />
-        <span>Voice</span>
-      </label>
-      <label class="fw-dock-opt-label">
-        <span>Voice style</span>
-        <select id="voice-profile-input" style="background:transparent;border:1px solid var(--fw-rule);border-radius:8px;color:inherit;font:inherit;padding:4px 6px;">
-          <option value="default">Narrator</option>
-          <option value="coach">Coach</option>
-        </select>
-      </label>
-    </div>
-    <form id="chat-form">
-      <div class="composer-wrap">
-        <svg viewBox="0 0 24 24"><path d="M12 3v6M12 15v6M3 12h6M15 12h6"/><path d="M6 6l3 3M15 15l3 3M6 18l3-3M15 9l3-3"/></svg>
-        <input id="chat-input" placeholder="Ask about this video…" />
-      </div>
-      <button id="send-btn" type="button">
-        <svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-3-7-7-1z"/></svg>
-      </button>
-    </form>
-  </div>
+  <!-- fw-dock stub: kept for JS null-safety; chat content lives in #tab-chat -->
+  <div id="fw-dock" style="display:none;"></div>
 
-  <!-- TF.js WASM + MoveNet for extension pose tracking -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.22.0/dist/tf-core.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@4.22.0/dist/tf-backend-wasm.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.22.0/dist/tf-converter.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js"></script>
+  <!-- TF.js (core + WASM backend + converter) bundled locally — no WebGL to avoid eval() CSP errors -->
+  <script src="../../lib/tf-core.min.js"></script>
+  <script src="../../lib/tf-backend-wasm.min.js"></script>
+  <script src="../../lib/tf-converter.min.js"></script>
+  <script src="../../lib/pose-detection.min.js"></script>
   <script src="../config.js"></script>
   <script src="panel.js"></script>
 </body>

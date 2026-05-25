@@ -1,409 +1,187 @@
-# Framewise — Team Task Board
+# Framewise — Work Summary & Review Guide
 
-Last updated: 2026-05-24 (session 4)
+Last updated: 2026-05-24
 
-## Ownership
+---
 
-| Area | Primary contributors | Notes |
+## What Has Been Built
+
+### Backend
+
+| Area | Status | Notes |
 |---|---|---|
-| Product architecture | Ayse + Irem | Shared backend, web app, and extension architecture |
-| Backend/API/AI | Ayse + Irem | Express, MongoDB models, Gemini, ElevenLabs, auth, search, progress, bookmarks, collections |
-| Web app/UI/UX | Ayse | React flows, design system, library/video/settings UX, theme system |
-| Chrome extension | Ayse + Irem | YouTube detection, side panel, timeline auto-load, caption injection, progress sync |
-| QA/demo polish | Shared | End-to-end testing before review/demo |
-
-Contribution note: Ayse has worked across frontend, backend, and extension implementation, especially on product flows, integration polish, visual system, library/search/bookmark/collection/progress behavior, extension UX, and pose tracking. This task board uses ownership as a planning aid, not as a strict boundary.
-
-## Current Working Product
-
-### Core
-- [x] Shared backend for web app and Chrome extension
-- [x] MongoDB models for users, videos, segments, chat, captions, notes, bookmarks, collections
-- [x] JWT auth with email/password
-- [x] Google OAuth path
-- [x] YouTube URL analysis with Gemini
-- [x] Segment timeline stored in MongoDB
-- [x] Library search across titles and segment summaries
-- [x] Collections/folders
-- [x] Continue watching progress
-- [x] Video detail page with YouTube player
-- [x] Chat with video
-- [x] Timestamp seeking from segments/chat/quiz/captions
-- [x] ElevenLabs voice response endpoint
-- [x] Notes and AI-generated notes
-- [x] Bookmarks
-- [x] Quiz generation
-- [x] Dance/practice mode
-- [x] Real-time webcam pose tracking in web Practice tab with MoveNet
-- [x] Adaptive video mode foundation: detected mode + manual override (`auto` / `study` / `dance`)
-- [x] YouTube captions generation
-- [x] ElevenLabs audio transcription fallback
-- [x] Caption translation
-- [x] Dark/light theme system
-
-### Visual Design System
-- [x] Full UI redesign — LibraryPage, VideoPage, SettingsPage, AnalyzePage (warm film-club "Screening Room" palette)
-- [x] Framewise design tokens: `--fw-*` CSS variables, `.fw-light`/`.fw-dark` class-based theming
-- [x] FramewiseMark logo integrated across web app and extension
-- [x] Extension panel full visual redesign (ExtensionB dark theme with filmstrip header)
-- [x] Extension icons regenerated from exact FramewiseMark SVG geometry
-
-### Web App / Frontend
-- [x] LandingPage logged-in user chip with sign-out (auth-aware nav)
-- [x] Extension setup guide at `/extension` — public page, no auth required
-- [x] Route added for `/extension` in App.jsx
-
-### Extension (completed)
-- [x] Extension side panel
-- [x] Extension timeline auto-load for analyzed videos
-- [x] Extension caption injection timed to video playback
-- [x] Tab order: Timeline → Chat → Captions → Dance
-- [x] Voice replies opt-in (unchecked by default, persisted in localStorage)
-- [x] Timeline search/filter — live filter by segment title or summary
-- [x] Speed controls in Timeline tab (0.5× / 0.75× / 1× / 1.25× / 1.5× / 2×)
-- [x] Active segment auto-highlight and scroll (polls video time every 2s)
-- [x] Copy timestamp link per segment (copies YouTube URL with `&t=` parameter)
-- [x] Chat suggestion chips — Summarize / Key points / Quiz me / Intro
-- [x] Rotating analysis status messages during Gemini processing
-- [x] Extension chat: typing indicator, error display, markdown rendering, mode-aware requests
-- [x] Extension Practice tab: live webcam pose tracking with MoveNet SINGLEPOSE_LIGHTNING
-  - Green skeleton overlay drawn on canvas via WebGL/WASM backend
-  - 10 FPS RAF loop (lightweight during YouTube playback)
-  - Keypoint count pill with live status
-- [x] Extension auto pose snaps at dance segment transitions
-  - Fires when active segment index changes (2s delay, 8s cooldown)
-  - Quality scoring — Great / Good / Ok / Low — rendered as colored bar review cards
-
-### Backend / AI
-- [x] Gemini analysis concurrency raised to 3 parallel chunk requests (GEMINI_CHUNK_CONCURRENCY)
-- [x] Gemini RPM gate raised to 14 requests/min (GEMINI_RPM)
-- [x] Per-user AI rate limit raised to 15 req/min (was 5)
-- [x] Retry base delay reduced from 2000ms → 800ms
-- [x] Chat context capped: transcript 3000 chars, history 10 messages
-- [x] Gemini fetch error retry — `withRetry` now retries `TypeError`/fetch-failed/ECONNRESET/ETIMEDOUT with same backoff as 503
-- [x] Server-level fetch error handler — maps network-level Gemini errors to clean 503 response
+| Express server + CORS | ✅ Done | Dev: open; Prod: requires `ALLOWED_ORIGINS` |
+| MongoDB models | ✅ Done | User, Video, Segment, ChatMessage, Caption, Note, Bookmark, Collection |
+| JWT auth (register / login / me / delete) | ✅ Done | Account delete cascades all user data |
+| Google OAuth | ✅ Done | Requires matching client IDs in both `.env` files |
+| Gemini video analysis | ✅ Done | Async job queue, progress polling, retry/backoff |
+| Gemini chat | ✅ Done | Context: transcript + segments + history + current time + mode |
+| Gemini dance analysis | ✅ Done | Returns choreography segments with body cues |
+| Gemini quiz generation | ✅ Done | Gemini watches the actual video, not just transcript |
+| Gemini caption correction + translation | ✅ Done | Chains after YouTube transcript or ElevenLabs STT |
+| Gemini AI notes | ✅ Done | Generated from full video transcript |
+| ElevenLabs TTS | ✅ Done | Narrator + Coach voice presets |
+| ElevenLabs STT (audio captions) | ✅ Done | yt-dlp audio download → ElevenLabs transcription |
+| YouTube transcript captions | ✅ Done | Precise timestamps fetched from YouTube |
+| Caption translation | ✅ Done | Any target language via Gemini |
+| Async job queue | ✅ Done | In-memory, no Redis; analyze runs async, dance/captions still sync |
+| Per-user rate limiter | ✅ Done | 15 req/min on AI routes |
+| Global Gemini RPM gate | ✅ Done | Default 14 RPM, configurable via `GEMINI_RPM` |
+| Gemini retry + backoff | ✅ Done | Retries 429, 503, and network-level fetch errors |
+| Request timeouts | ✅ Done | 180s analyze, 120s dance, 300s STT, 180s correct |
+| ObjectId validation middleware | ✅ Done | All parameterised routes protected |
+| Bookmarks (create / rename) | ✅ Done | |
+| Notes (create / AI generate) | ✅ Done | |
+| Collections (create / rename / add / remove video) | ✅ Done | |
+| Continue watching (progress) | ✅ Done | Restored on next open |
+| Adaptive mode fields | ✅ Done | `detectedMode`, `modeOverride`, `modeConfidence`, `modeSignals` |
+| Weighted text search index | ✅ Done | title × 8, segmentSearchText × 5, transcript × 1 |
 
 ---
 
-## Pre-Review Checklist
+### Web App (Frontend)
 
-Run through this before handing to teammate:
-
-- [ ] `npm run install:all` at repo root (installs all three workspaces)
-- [ ] Copy `backend/.env.example` → `backend/.env` and fill in all values
-- [ ] Copy `frontend/.env.example` → `frontend/.env` and fill in VITE_GOOGLE_CLIENT_ID
-- [ ] `npm run dev` starts backend on `3001` and frontend on `5174`
-- [ ] `GET http://localhost:3001/api/health` returns ok
-- [ ] Register a new test user
-- [ ] Log in with that test user — confirm user chip appears in LandingPage nav with sign-out
-- [ ] Visit `/extension` — confirm setup guide page loads (no auth required)
-- [ ] Analyze a fresh YouTube URL
-- [ ] Re-open that analyzed URL — confirm cached load works
-- [ ] Search library by video title
-- [ ] Search library by a segment summary phrase
-- [ ] Create a collection and add a video
-- [ ] Filter library by collection
-- [ ] Open a video and seek through timeline segments
-- [ ] Ask chat a timestamp-specific question
-- [ ] Confirm voice reply works when ElevenLabs key is configured
-- [ ] Add a note; generate AI notes
-- [ ] Add a bookmark
-- [ ] Generate a quiz
-- [ ] Generate captions; toggle subtitle translation
-- [ ] Open Practice tab and start/stop webcam pose tracking
-- [ ] Override a video between Auto / Study Queue / Dance Practice and confirm UI adapts
-- [ ] Confirm continue watching updates after playback
-- [ ] Load the extension unpacked in Chrome
-- [ ] Sign in on web app, then open YouTube
-- [ ] Extension detects current video
-- [ ] Extension auto-loads saved timeline for already analyzed videos
-- [ ] Extension: search timeline, change speed, copy timestamp, use chat chip
-- [ ] Extension: voice replies off by default; turn on and confirm TTS plays
-- [ ] Extension can inject captions timed to playback
-- [ ] Extension Dance tab: enable webcam, confirm skeleton appears and keypoint pill updates
-- [ ] Extension Dance tab: seek through dance segments, confirm review cards appear automatically
-- [ ] Test light theme and dark theme
-
----
-
-## High Priority Fixes / Hardening
-
-- [x] Add frontend loading and error states for every async tool action — all pages confirmed complete
-- [x] Add user-visible failures for Gemini, YouTube transcript, ElevenLabs STT, and voice TTS
-- [x] Add request timeout middleware for long AI calls — `timeout.js` wired: 180s analyze, 120s dance, 300s STT, 180s correct
-- [x] Ensure all video-scoped backend endpoints verify `userId`
-- [x] Add backend validation for ObjectId params — `validateObjectId.js` wired to all parameterized routes
-- [x] Add text-index sync/migration instructions for MongoDB Atlas — documented in `backend/.env.example`
-- [x] Move `better-youtube-captions-main/` to `.archive/reference/`
-- [x] Move hardcoded extension URLs into a config file — `extension/src/config.js` with FW_API + FW_APP
-- [x] Fix CORS open-origins-in-production hole
-- [x] Add `GOOGLE_CLIENT_SECRET` to `backend/.env.example`
-- [x] Fix `getVoice` error handling
+| Area | Status | Notes |
+|---|---|---|
+| React Router setup (public + protected routes) | ✅ Done | |
+| LandingPage with auth-aware nav | ✅ Done | Shows user chip + sign-out when logged in |
+| LoginPage (email + Google OAuth) | ✅ Done | |
+| Dashboard analyze flow with job polling + progress bar | ✅ Done | Rotating status messages while Gemini works |
+| LibraryPage with search + collection filter | ✅ Done | Skeleton loading states |
+| VideoPage — timeline, seek, segments | ✅ Done | |
+| VideoPage — chat with voice toggle | ✅ Done | |
+| VideoPage — notes + AI notes | ✅ Done | |
+| VideoPage — bookmarks | ✅ Done | |
+| VideoPage — quiz | ✅ Done | |
+| VideoPage — captions + translation + download | ✅ Done | |
+| VideoPage — Practice tab dancer skeleton | ✅ Done | MULTIPOSE_LIGHTNING via `getDisplayMedia`; overlaid on player canvas |
+| VideoPage — multi-person tracking + person picker | ✅ Done | Auto-selects most-centered; `Auto / 1 / 2 / 3` picker; number labels above each person |
+| VideoPage — Framewise fullscreen | ✅ Done | ⊞ button calls `requestFullscreen()` on `.vp-player` wrapper; YouTube fullscreen intercepted |
+| VideoPage — practice tab + webcam pose tracking | ✅ Done | Full-screen DancePracticeWorkspace overlay |
+| Dance Practice Workspace (full-screen) | ✅ Done | |
+| Dance Practice — "Now Practicing" cue bar | ✅ Done | Shows active segment title, bodyPosition tag, movementCue during session |
+| Dance Practice — session tracking | ✅ Done | Records segments visited, loop count, speeds used |
+| Dance Practice — post-session stats card | ✅ Done | Body visibility %, avg joints, sections count; colour-coded |
+| Dance Practice — honest coach commentary | ✅ Done | Prompt includes real tracking quality, sections, speeds, loops; coach instructed to be specific |
+| MoveNet webcam skeleton (sage bones + rust joints) | ✅ Done | |
+| Dancer skeleton via screen capture (orange) | ✅ Done | `getDisplayMedia` + crop to player bounds |
+| Independent Mirror Me / Mirror Video controls | ✅ Done | |
+| Loop + speed presets (0.5× – 2×) | ✅ Done | |
+| AI coach TTS after session | ✅ Done | |
+| Adaptive mode override UI | ✅ Done | Auto / Study Queue / Dance Practice |
+| Continue watching restore | ✅ Done | |
+| Collection management (rename, delete, remove) | ✅ Done | |
+| SettingsPage (profile, preferences, theme, API health) | ✅ Done | |
+| ExtensionPage setup guide | ✅ Done | Public route `/extension`, no auth required |
+| Dark / light theme with `--fw-*` design tokens | ✅ Done | Warm "Screening Room" palette |
+| Toast notifications | ✅ Done | |
+| Skeleton loading states | ✅ Done | Library cards, video segments |
 
 ---
 
-## Frontend / UX Next Tasks
+### Chrome Extension
 
-### Component Cleanup
-
-- [ ] Extract `VideoPlayer.jsx`
-- [ ] Extract `VideoFeatureSelector.jsx`
-- [ ] Extract `TimelinePanel.jsx`
-- [ ] Extract `ChatPanel.jsx`
-- [ ] Extract `CaptionsPanel.jsx`
-- [ ] Extract `NotesPanel.jsx`
-- [ ] Extract `BookmarksPanel.jsx`
-- [ ] Extract `QuizPanel.jsx`
-- [ ] Extract `DancePanel.jsx`
-- [ ] Extract shared `Button`, `Input`, `Panel`, `EmptyState`, and `Toggle` components
-
-### Product Polish
-
-- [x] Add route/page loading states (skeleton cards in Library, skeleton segments on VideoPage)
-- [x] Add toast notifications for saves, deletes, generated content, and errors
-- [x] Add real-time MoveNet pose tracker to VideoPage Practice section
-- [x] Add collection management UI: rename, delete, remove video from collection
-- [ ] Add empty-state art or branded motion moments
-- [ ] Add keyboard shortcuts for chat submit, seek, and bookmark
-- [ ] Add a command/search palette for videos and actions
-- [ ] Improve mobile layout for VideoPage
-- [ ] Add per-video action menu on library cards (re-analyze, delete, add to collection)
-
-### Adaptive Learning Modes
-
-- [x] Persist `detectedMode`, `modeOverride`, `modeConfidence`, and `modeSignals` on videos
-- [x] Add manual mode override API and VideoPage control
-- [x] Use detected/override mode for Library Practice and Study Queue filtering
-- [x] Adapt VideoPage default tab order by effective mode
-- [x] Adapt extension tab priority by effective mode
-- [ ] Add Gemini-powered classifier that uses title, description, transcript, segments, and visual context
-- [ ] Add contextual onboarding: "This looks like a dance practice video" / "This looks like a study video"
-- [ ] Add user feedback buttons to improve classifier quality
-- [ ] Add mode-specific recommendation engine for next best actions
-- [ ] Persist user interaction patterns for adaptive recommendations
-
-### Dance Practice System
-
-- [x] Basic dance segment generation
-- [x] Web webcam pose tracking with MoveNet
-- [x] Loop selected timestamp ranges
-- [x] Slow-motion playback controls / speed presets
-- [x] Mirror mode (independent Mirror Me + Mirror Video controls)
-- [x] Dancer pose tracking (orange skeleton via getDisplayMedia screen capture)
-- [ ] Generate motion-aware choreography segments using movement changes, music transitions, and pose/action shifts
-- [ ] Normalize dance timeline labels: Intro, Chorus Practice, Footwork Section, Hand Movements, Transition Sequence, Full-Speed Run, Outro
-- [ ] Countdown replay before loop restarts
-- [ ] Section repetition counter and practice session tracking
-- [ ] Compare webcam pose against source choreography keyframes
-- [ ] Track long-term improvement per dance segment
-
-### Study Queue System
-
-- [x] Topic timeline, transcript, notes, bookmarks, quiz, and chat
-- [x] Chapter-style timestamps / topic breakdowns
-- [x] AI-generated notes
-- [x] Quiz generation
-- [x] Bookmarks
-- [ ] Generate concept hierarchy and prerequisite hints
-- [ ] Merge captions + transcript into one searchable transcript model
-- [ ] Add highlights and flashcards
-- [ ] Add exportable study packs
-- [ ] Add study sessions and spaced repetition plan
-
-### Settings
-
-- [x] Add theme toggle
-- [x] Add settings tabs (Profile / Preferences / Learning / Extension)
-- [x] Add learning preference controls (voice, auto-resume, density)
-- [x] Wire settings preferences into VideoPage defaults
-- [x] Add account deletion/sign-out confirmation flow
-- [x] Add API health/status indicator
-- [ ] Add real extension connection status (replace placeholder "connected" state)
+| Area | Status | Notes |
+|---|---|---|
+| Manifest V3 side panel | ✅ Done | |
+| Service worker — YouTube detection | ✅ Done | Fires on tab activate, URL change, navigation events |
+| Instant video detection on panel open | ✅ Done | Reads `chrome.storage.session`; falls back to active-tab query — no reload needed |
+| Video thumbnail in strip | ✅ Done | Fetched from `img.youtube.com/vi/{id}/mqdefault.jpg` |
+| No-video empty state | ✅ Done | App icon + "Open YouTube" button when no watch page is active |
+| Title-based mode detection | ✅ Done | Classifies dance / study / general from title regex; no API call |
+| Content script — seek bar markers | ✅ Done | Rust-orange dots on YouTube progress bar |
+| Content script — caption overlay (RAF loop) | ✅ Done | Hides native YouTube captions, renders own overlay |
+| Extension auth — reads token from web app tab | ✅ Done | Falls back to `chrome.storage.local` |
+| Auto-load saved timeline | ✅ Done | Background worker calls `/videos/lookup` |
+| Timeline tab — search, active highlight, scroll | ✅ Done | |
+| Timeline tab — speed controls | ✅ Done | 0.5× – 2× |
+| Timeline tab — copy timestamp link | ✅ Done | `&t=` URL to clipboard |
+| Captions tab — generate, inject, translate | ✅ Done | |
+| Chat as accordion section | ✅ Done | Replaced persistent bottom dock; min-height 320px when open |
+| Chat chips — adaptive per mode | ✅ Done | Dance: Learn moves / Break down / Dance style / Key sections; Study: Summarize / Key concepts / Quiz me / Explain |
+| Voice toggle with SVG icons | ✅ Done | Proper SVG on/off icons; no emoji |
+| Voice style select in header | ✅ Done | Compact select only shown when voice is on |
+| Practice tab — live webcam pose tracking | ✅ Done | WASM backend, non-threaded SIMD, 10 FPS, sage bones + rust joints |
+| Practice tab — auto pose snaps at segment transitions | ✅ Done | 2 s delay, 8 s cooldown, quality review cards |
+| Quick actions — bookmark + note at timestamp | ✅ Done | Syncs to backend |
+| Quick actions — Open in Framewise deep link | ✅ Done | |
+| Adaptive section order (dance vs study) | ✅ Done | Dance: Practice first; Study: Timeline first |
+| Dark / light theme toggle | ✅ Done | |
+| TF.js bundled locally (MV3 CSP compliant) | ✅ Done | No CDN, no eval; WASM backend with local binaries |
+| WASM multithread disabled | ✅ Done | `tf.env().set("WASM_HAS_MULTITHREAD_SUPPORT", false)` — prevents blob: Worker CSP error |
+| Extension setup guide page on web app | ✅ Done | |
 
 ---
 
-## Backend / AI Next Tasks
+## Areas to Review / Improve
 
-### Stability
+### High Priority
 
-- [x] Add rate limiting for AI endpoints — 15 req/min/user on analyze, dance, captions, quiz
-- [x] Add retry/backoff for Gemini calls — retries 429, 503, and network-level fetch errors
-- [ ] Add centralized request validation (Joi or Zod)
-- [ ] Add centralized async error wrapper (eliminate per-controller try/catch boilerplate)
-- [ ] Add response-size guardrails for captions/transcripts
-- [ ] Add structured logging for analysis jobs (replace `console.log`)
-
-### Job Queue
-
-- [x] In-memory job queue (no Redis required) — `backend/src/queue/jobQueue.js`
-- [x] Move `/api/videos/analyze` into an async job — returns `{ jobId }`, processes with `setImmediate`
-- [x] Add job status endpoint — `GET /api/jobs/:jobId`
-- [x] Add frontend polling/progress UI on AnalyzePage — polls every 2s, progress bar + rotating status
-- [ ] Move dance analysis into an async job
-- [ ] Move captions/STT into an async job
-
-### Data Model
-
-- [x] Add collection rename endpoint — `PATCH /api/collections/:collectionId`
-- [x] Add bookmark update/rename endpoint — `PATCH /api/videos/:videoId/bookmarks/:bookmarkId`
-- [x] Add caption edit/save endpoint from web app — `PUT /api/videos/:videoId/captions`
-- [x] Add transcript import endpoint — `POST /api/videos/:videoId/transcript`
-- [x] Add account delete endpoint — `DELETE /api/auth/me` (cascades all user data)
-- [x] Add video mode fields for adaptive Study Queue / Dance Practice behavior
-- [ ] Add unique index strategy for user/video URL normalization
-- [ ] Add collection video ordering
-- [ ] Add source description metadata for better classification
+| Area | What to look at |
+|---|---|
+| **Dance / captions / STT still synchronous** | These three AI operations run inside the request cycle. For long videos they time out or block. Move them into the job queue the same way analyze was moved — return `{ jobId }`, poll from the frontend. |
+| **Extension production config** | `extension/src/config.js` is hardcoded to `localhost`. Before any public deployment, update `FW_API` and `FW_APP` to the production URLs and rebuild `dist/content.js`. |
+| **Google OAuth redirect URI** | Currently only `http://localhost:5174` is registered. Production deployment needs the production origin added to Google Cloud Console. |
+| **MongoDB `autoIndex` in production** | `autoIndex` is disabled by default in production Mongoose configs. The weighted text search index must be created manually before the app can search. Command is in the README. |
 
 ---
 
-## Chrome Extension Next Tasks
+### Medium Priority
 
-### Immediate
-- [x] Add extension-side bookmark button — save current timestamp to backend as a Bookmark
-- [x] Add extension-side note button — save quick text note at current timestamp to backend
-- [x] Add "Open in Framewise" deep link — button that opens `/app/video/:videoId` in a new tab
-- [ ] Wire extension voice preference to backend (currently localStorage-only)
-- [ ] Read `detectedMode` / `modeOverride` from lookup response and adapt initial tab
-- [ ] For dance videos, prioritize Timeline, Practice, Dance tools, loop, mirror, and speed controls
-- [ ] For study videos, prioritize Notes, Transcript, Quiz, bookmarks, and study chat chips
-
-### Infrastructure
-- [x] Move hardcoded `localhost` URLs to `extension/src/config.js`
-- [ ] Add production API URL config workflow (build-time env or release-specific config)
-- [ ] Add caption timing calibration control (offset slider if captions drift)
-- [ ] Keep sidebar/overlay performance smooth during active playback
-
-### Future
-- [ ] Add multi-site support research: Vimeo, Coursera, Udemy
-- [ ] Prepare Chrome Web Store checklist (icons, description, privacy policy URL, store screenshots)
-- [ ] Add extension onboarding/first-run screen
+| Area | What to look at |
+|---|---|
+| **Component extraction** | `VideoPage.jsx` is large — all panels (timeline, chat, captions, notes, bookmarks, quiz, dance) live in one file. Each could be its own component under `frontend/src/components/`. |
+| **Dancer tracking — tab share only** | `getDisplayMedia` crop coordinates assume the user shares the browser tab, not the full screen. If the user shares the whole screen, the crop is offset because `getBoundingClientRect()` is viewport-relative. Detect capture dimensions vs. `window.innerWidth` to warn the user. |
+| **YouTube fullscreen intercept reliability** | The automatic `exitFullscreen → requestFullscreen` chain in the `fullscreenchange` handler may be blocked on some browsers as a non-user-gesture. Fallback: the manual **⊞** button always works. |
+| **Gemini mode classifier** | `detectedMode` is set by a keyword heuristic. A Gemini-powered classifier using actual video content would be more accurate. |
+| **Extension voice preference sync** | Voice on/off and voice profile are stored only in extension `localStorage`. Not synced to the user's backend profile. |
+| **Rate limiter feedback in UI** | When the per-user rate limit is hit, the frontend gets a 429 but shows a generic error. A "Too many requests — wait a moment" message would help. |
 
 ---
 
-## Testing Plan
+### Low Priority / Future Work
 
-### Manual Smoke Tests
-
-- [ ] Auth register/login/logout
-- [ ] Google OAuth
-- [ ] Analyze URL (confirm faster response with current concurrency settings)
-- [ ] Cached analyze result
-- [ ] Library search
-- [ ] Collections CRUD
-- [ ] Video timeline seek
-- [ ] Chat + voice reply
-- [ ] Notes / AI notes
-- [ ] Bookmarks
-- [ ] Quiz
-- [ ] Dance
-- [ ] Web Practice tab pose tracking: webcam permission, skeleton overlay, stop cleanup
-- [ ] Adaptive mode override: Auto / Study Queue / Dance Practice
-- [ ] Captions — YouTube native
-- [ ] Captions — ElevenLabs STT fallback
-- [ ] Caption translation
-- [ ] Continue watching
-- [ ] Extension detection
-- [ ] Extension auto-load
-- [ ] Extension timeline search
-- [ ] Extension speed controls
-- [ ] Extension copy timestamp
-- [ ] Extension chat chips
-- [ ] Extension voice opt-in toggle
-- [ ] Extension caption injection
-- [ ] Extension Dance tab: webcam → skeleton → keypoint pill
-- [ ] Extension Dance tab: segment change → pose snap → review card
-- [ ] Theme toggle (web + extension)
-
-### Automated Tests To Add
-
-- [ ] Backend auth controller tests
-- [ ] Backend video ownership tests
-- [ ] Backend search endpoint tests
-- [ ] Backend bookmark endpoint tests
-- [ ] Backend collection endpoint tests
-- [ ] Backend progress endpoint tests
-- [ ] Frontend smoke render tests
-- [ ] Extension utility tests for URL normalization/progress payloads
+| Area | Notes |
+|---|---|
+| Automated test coverage | No tests exist yet. Priority order: auth controller → video ownership → search → bookmarks → collections. |
+| File/upload support | Only YouTube URLs work. Gemini Files API + file upload endpoint would extend to local video files. |
+| Flashcards & spaced repetition | Notes are generated but there is no flashcard or review system. |
+| Study packs export | No way to export notes, bookmarks, and quiz questions as a study pack yet. |
+| Adaptive recommendations | Mode is detected but there are no recommendations ("watch this next", "practice this segment more"). |
+| Chrome Web Store submission | Icons, description, privacy policy URL, store screenshots, and a production config build are all needed before submission. |
+| Multi-site support | Only YouTube is supported. Vimeo, Coursera, Udemy would require new content script matchers and player adapters. |
+| Caption timing calibration | No offset slider if captions drift (e.g. videos with a long intro card). |
+| Command palette | No keyboard shortcut layer or search palette on the web app. |
+| Dancer accuracy comparison | Pose tracking runs on both webcam and video but no joint-level comparison is computed. A similarity score (e.g. cosine similarity of normalised limb angles) would make the session stats more meaningful. |
 
 ---
 
-## API Contract Reference
+## Running the Project
 
-| Endpoint | Method | Purpose |
-|---|---:|---|
-| `/api/auth/register` | POST | Email registration |
-| `/api/auth/login` | POST | Email login |
-| `/api/auth/google` | POST | Google OAuth login |
-| `/api/auth/me` | GET | Current user |
-| `/api/auth/me` | PUT | Update profile |
-| `/api/auth/me` | DELETE | Delete account and all data |
-| `/api/videos/analyze` | POST | Analyze YouTube URL |
-| `/api/videos/search` | GET | Library search |
-| `/api/videos/lookup` | GET | Extension cached lookup by URL |
-| `/api/videos` | GET | List library videos |
-| `/api/videos/:videoId` | GET | Get one video |
-| `/api/videos/:videoId/mode` | PATCH | Set manual mode override |
-| `/api/videos/:videoId/segments` | GET | Topic/dance segments |
-| `/api/videos/:videoId/progress` | PATCH | Continue watching |
-| `/api/videos/:videoId/dance` | POST | Dance analysis |
-| `/api/videos/:videoId/quiz` | POST | Quiz generation |
-| `/api/chat/:videoId/message` | POST | Chat with video |
-| `/api/chat/:videoId/history` | GET | Chat history |
-| `/api/chat/:videoId/voice` | POST | ElevenLabs TTS |
-| `/api/videos/:videoId/captions` | GET | Captions |
-| `/api/videos/:videoId/captions` | PUT | Bulk save edited captions |
-| `/api/videos/:videoId/captions/generate` | POST | YouTube transcript captions |
-| `/api/videos/:videoId/captions/generate-audio` | POST | ElevenLabs STT captions |
-| `/api/videos/:videoId/captions/correct` | POST | Gemini caption correction |
-| `/api/videos/:videoId/captions/translate` | POST | Caption translation |
-| `/api/videos/:videoId/transcript` | POST | Import raw transcript |
-| `/api/videos/:videoId/notes` | GET/POST | Notes |
-| `/api/videos/:videoId/notes/generate` | POST | AI notes |
-| `/api/videos/:videoId/bookmarks` | GET/POST | Bookmarks |
-| `/api/videos/:videoId/bookmarks/:bookmarkId` | PATCH | Rename bookmark |
-| `/api/collections` | GET/POST | Collections |
-| `/api/collections/:collectionId` | PATCH | Rename collection |
-| `/api/collections/:collectionId/videos` | POST | Add video to collection |
-| `/api/collections/:collectionId/videos/:videoId` | DELETE | Remove video from collection |
-| `/api/jobs/:jobId` | GET | Poll async job status |
+```bash
+npm run install:all     # install all three workspaces
+npm run dev             # starts backend :3001 + frontend :5174
+```
 
----
+Extension: load `extension/` folder unpacked in Chrome (see README for full steps).
 
-## Moving Forward Path
+## Quick Smoke Test
 
-### Milestone 1: Review-Ready MVP ← current focus
-
-- [x] All pages visually redesigned and consistent
-- [x] Extension panel redesigned and feature-complete
-- [x] Gemini analysis speed optimized
-- [x] Extension pose tracking (webcam + auto pose snaps)
-- [x] Extension setup guide at `/extension`
-- [ ] Finish smoke test checklist end-to-end
-- [ ] Confirm extension works on three or four real YouTube videos
-- [ ] Confirm light/dark theme consistency across all pages
-
-### Milestone 2: Reliability
-
-- [x] Add job queue for async AI work (in-memory, no Redis)
-- [x] Add robust loading/error states across all async actions
-- [x] Make extension URLs configurable (not hardcoded localhost)
-- [x] Add request timeouts for Gemini/ElevenLabs
-- [x] Gemini fetch error retry + clean 503 fallback
-- [ ] Add endpoint validation and test coverage
-
-### Milestone 3: Product Depth
-
-- [ ] Adaptive mode classifier and adaptive extension/web UI
-- [ ] Dance movement scoring and practice history
-- [ ] Study packs, flashcards, and spaced repetition
-- [ ] Upload video support (non-YouTube)
-- [ ] Share/export study packs
-- [ ] Public/shared video pages
-
-### Milestone 4: Launch Track
-
-- [ ] Deploy backend and frontend
-- [ ] Create production extension config and build
-- [ ] Add privacy policy and data deletion flow
-- [ ] Chrome Web Store submission
-- [ ] Demo video and onboarding flow
+- [ ] Register → log in → user chip appears in landing nav with sign-out
+- [ ] Analyze a YouTube URL → progress bar → timeline appears
+- [ ] Click segment → player seeks
+- [ ] Chat → timestamped answer → voice reply works
+- [ ] Generate captions → translate → download `.srt`
+- [ ] Generate quiz → answer questions
+- [ ] Open Practice tab on a dance video → Start Pose Tracking → share tab → orange skeleton on dancer
+- [ ] Multi-person video: person labels appear, picker selects correctly
+- [ ] ⊞ button → Framewise fullscreen → skeleton still visible
+- [ ] Open Practice Mode → webcam skeleton (sage + rust) appears
+- [ ] Mirror Me and Mirror Video work independently
+- [ ] End Practice session → stats card shows body visibility % → coach audio plays
+- [ ] Extension loads without CSP errors
+- [ ] Extension opens on a YouTube video — thumbnail + title appear immediately, no reload needed
+- [ ] Extension auto-loads saved timeline
+- [ ] Extension chat responds with mode-appropriate chips
+- [ ] Extension Practice tab → webcam → pose snaps appear
+- [ ] Light and dark theme work on both surfaces

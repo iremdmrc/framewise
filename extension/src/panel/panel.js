@@ -43,13 +43,21 @@ async function tryGetTokenFromWebApp() {
 function showApp() {
   document.getElementById("not-logged-in").style.display = "none";
   document.getElementById("app-screen").style.display = "flex";
-  document.getElementById("fw-dock").style.display = "flex";
+  showNoVideoState(true); // default until a video URL is confirmed
 }
 
 function showNotLoggedIn() {
   document.getElementById("not-logged-in").style.display = "flex";
   document.getElementById("app-screen").style.display = "none";
-  document.getElementById("fw-dock").style.display = "none";
+}
+
+function showNoVideoState(show) {
+  const noVideoEl = document.getElementById("no-video-state");
+  const analyzeBtn = document.getElementById("analyze-btn");
+  const sections = document.querySelector(".fw-sections");
+  if (noVideoEl) noVideoEl.style.display = show ? "flex" : "none";
+  if (analyzeBtn) analyzeBtn.style.display = show ? "none" : "";
+  if (sections) sections.style.display = show ? "none" : "";
 }
 
 // ── Boot ───────────────────────────────────────────────────────────────────────
@@ -91,23 +99,36 @@ function showNotLoggedIn() {
         : "Timeline loaded";
     }
   } else {
-    document.getElementById("status").textContent = "Open a YouTube video";
+    // Fallback: query the active tab directly in case background hasn't stored yet
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.url?.includes("youtube.com/watch")) {
+        const vidKey = new URL(tab.url).searchParams.get("v") || null;
+        setVideo(tab.url, tab.title, null, vidKey);
+        try {
+          const cached = await loadCachedAnalysis(tab.url);
+          if (cached) document.getElementById("status").textContent = "Timeline loaded";
+          else document.getElementById("status").textContent = "Video detected — click Analyze";
+        } catch {
+          document.getElementById("status").textContent = "Video detected — click Analyze";
+        }
+      } else {
+        showNoVideoState(true);
+        document.getElementById("status").textContent = "Open a YouTube video";
+      }
+    } catch {
+      showNoVideoState(true);
+      document.getElementById("status").textContent = "Open a YouTube video";
+    }
   }
 })();
 
 // ── Voice preference persistence ────────────────────────────────────────────────
-const voiceCheckbox = document.getElementById("voice-mode-input");
 const voiceProfileInput = document.getElementById("voice-profile-input");
 voiceEnabled = localStorage.getItem("fw_voice_replies") === "on";
 voiceProfile = localStorage.getItem("fw_voice_profile") || "default";
-voiceCheckbox.checked = voiceEnabled;
 if (voiceProfileInput) voiceProfileInput.value = voiceProfile;
 updateVoiceButton();
-voiceCheckbox.addEventListener("change", () => {
-  voiceEnabled = voiceCheckbox.checked;
-  localStorage.setItem("fw_voice_replies", voiceEnabled ? "on" : "off");
-  updateVoiceButton();
-});
 voiceProfileInput?.addEventListener("change", () => {
   voiceProfile = voiceProfileInput.value || "default";
   localStorage.setItem("fw_voice_profile", voiceProfile);
@@ -134,8 +155,15 @@ if (captionLangInput) {
 function updateVoiceButton() {
   const btn = document.getElementById("toggle-voice-btn");
   if (!btn) return;
-  btn.textContent = voiceEnabled ? "🔊" : "🔇";
   btn.title = voiceEnabled ? "Disable voice replies" : "Enable voice replies";
+  btn.classList.toggle("active", voiceEnabled);
+  const onIcon = document.getElementById("voice-on-icon");
+  const offIcon = document.getElementById("voice-off-icon");
+  if (onIcon) onIcon.style.display = voiceEnabled ? "" : "none";
+  if (offIcon) offIcon.style.display = voiceEnabled ? "none" : "";
+  // Show/hide the style selector in the header
+  const styleSelect = document.getElementById("voice-profile-input");
+  if (styleSelect) styleSelect.classList.toggle("visible", voiceEnabled);
 }
 
 // ── Theme toggle ───────────────────────────────────────────────────────────────
@@ -160,14 +188,13 @@ document.getElementById("theme-toggle-btn").addEventListener("click", () => {
   updateThemeIcon(next);
 });
 
-// ── Chat suggestion chips ─────────────────────────────────────────────────────
-document.querySelectorAll(".chip-btn").forEach((chip) => {
-  chip.addEventListener("click", () => {
-    if (chatLoading) return;
-    const input = document.getElementById("chat-input");
-    input.value = chip.dataset.msg;
-    sendChat();
-  });
+// ── Chat suggestion chips (delegated — chips are replaced per mode) ───────────
+document.getElementById("chat-chips").addEventListener("click", (e) => {
+  const chip = e.target.closest(".chip-btn");
+  if (!chip || chatLoading) return;
+  const input = document.getElementById("chat-input");
+  input.value = chip.dataset.msg;
+  sendChat();
 });
 
 // ── Timeline search ────────────────────────────────────────────────────────────
@@ -328,8 +355,14 @@ chrome.storage.onChanged.addListener((changes, area) => {
     currentVideoTitle = null;
     currentVideoKey = null;
     currentVideoDuration = null;
+    showNoVideoState(true);
+    updateChatChips("general");
     document.getElementById("status").textContent = "Open a YouTube video";
     document.getElementById("video-info").textContent = "";
+    const thumb = document.getElementById("video-thumb");
+    if (thumb) thumb.classList.remove("loaded");
+    const modeEl = document.getElementById("video-mode");
+    if (modeEl) modeEl.style.display = "none";
   }
 });
 
@@ -342,7 +375,16 @@ function setVideo(url, title, durationSeconds, videoKey) {
   currentVideoDuration = durationSeconds || (isNewVideo ? null : currentVideoDuration);
   if (isNewVideo) resetVideoState();
   updateVideoInfo();
-  document.getElementById("status").textContent = "Video detected";
+  showNoVideoState(false);
+
+  // Immediately apply soft mode from title — overridden once analysis loads
+  const softMode = detectModeFromTitle(currentVideoTitle);
+  applyVideoMode({ detectedMode: softMode, modeOverride: "auto" });
+
+  const modeLabel = softMode === "dance" ? "Dance video detected"
+    : softMode === "study" ? "Study video detected"
+    : "Video detected";
+  document.getElementById("status").textContent = modeLabel;
 }
 
 function resetVideoState() {
@@ -378,8 +420,13 @@ function getVideoKey(url) {
 }
 
 function updateVideoInfo() {
-  const durationText = currentVideoDuration ? ` - ${formatDuration(currentVideoDuration)}` : "";
+  const durationText = currentVideoDuration ? ` · ${formatDuration(currentVideoDuration)}` : "";
   document.getElementById("video-info").textContent = `${currentVideoTitle || currentVideoUrl}${durationText}`;
+  const thumb = document.getElementById("video-thumb");
+  if (thumb && currentVideoKey) {
+    thumb.src = `https://img.youtube.com/vi/${currentVideoKey}/mqdefault.jpg`;
+    thumb.classList.add("loaded");
+  }
 }
 
 // ── Accordion sections ─────────────────────────────────────────────────────────
@@ -406,6 +453,47 @@ document.querySelectorAll(".fw-section-hdr").forEach((hdr) => {
   });
 });
 
+// ── Mode detection ─────────────────────────────────────────────────────────────
+function detectModeFromTitle(title) {
+  if (!title) return "general";
+  const t = title.toLowerCase();
+  if (/\b(danc|choreo|choreograph|routine|hip[- ]?hop|k-?pop|kpop|ballet|salsa|twerk|breakdanc|bboy|bgirl|waacking|popping|locking|freestyle)\b/.test(t) ||
+      /dance (tutorial|cover|practice|class|lesson)/i.test(t) ||
+      /(tutorial|cover|learn).*(dance|choreo)/i.test(t)) return "dance";
+  if (/\b(lecture|lesson|course|explained?|how to|tutorial|learn|study|guide|class|university|college|education|revision|crash course)\b/.test(t)) return "study";
+  return "general";
+}
+
+const CHAT_CHIPS = {
+  dance: [
+    { label: "Learn the moves", msg: "Help me learn the moves in this video" },
+    { label: "Break it down", msg: "Break down the choreography step by step" },
+    { label: "Dance style?", msg: "What dance style is this?" },
+    { label: "Key sections", msg: "What are the key practice sections?" },
+  ],
+  study: [
+    { label: "Summarize", msg: "Summarize this video" },
+    { label: "Key concepts", msg: "What are the key concepts?" },
+    { label: "Quiz me", msg: "Quiz me on this video" },
+    { label: "Explain topic", msg: "Explain the main topic simply" },
+  ],
+  general: [
+    { label: "Summarize", msg: "Summarize this video" },
+    { label: "Key points", msg: "What are the key points?" },
+    { label: "Quiz me", msg: "Quiz me on this video" },
+    { label: "Intro", msg: "What happens at the beginning?" },
+  ],
+};
+
+function updateChatChips(mode) {
+  const chips = document.getElementById("chat-chips");
+  if (!chips) return;
+  const set = CHAT_CHIPS[mode] || CHAT_CHIPS.general;
+  chips.innerHTML = set.map(({ label, msg }) =>
+    `<button class="chip-btn" data-msg="${escapeHtml(msg)}">${escapeHtml(label)}</button>`
+  ).join("");
+}
+
 function applyVideoMode(video) {
   if (!video) return;
   const effectiveMode = (video.modeOverride && video.modeOverride !== "auto")
@@ -423,13 +511,16 @@ function applyVideoMode(video) {
     modeEl.style.display = (effectiveMode === "dance" || effectiveMode === "study") ? "inline-flex" : "none";
   }
 
+  // Update chat chips to match mode
+  updateChatChips(effectiveMode);
+
   // Reorder sections based on mode
   const sectionsContainer = document.querySelector(".fw-sections");
   if (!sectionsContainer) return;
   const sections = Array.from(sectionsContainer.querySelectorAll(".fw-section"));
   const order = effectiveMode === "dance"
-    ? ["section-timeline", "section-practice", "section-captions"]
-    : ["section-timeline", "section-captions", "section-practice"];
+    ? ["section-timeline", "section-practice", "section-chat", "section-captions"]
+    : ["section-timeline", "section-chat", "section-captions", "section-practice"];
 
   order.forEach((id) => {
     const s = sections.find((el) => el.id === id);
@@ -437,7 +528,7 @@ function applyVideoMode(video) {
   });
 
   // Auto-open the primary section for the mode
-  openSection(effectiveMode === "dance" ? "dance" : "segments");
+  openSection(effectiveMode === "dance" ? "dance" : effectiveMode === "study" ? "segments" : "segments");
 }
 
 // ── Analyze ────────────────────────────────────────────────────────────────────
@@ -748,7 +839,6 @@ async function loadChatHistory() {
 
 document.getElementById("toggle-voice-btn").addEventListener("click", () => {
   voiceEnabled = !voiceEnabled;
-  voiceCheckbox.checked = voiceEnabled;
   localStorage.setItem("fw_voice_replies", voiceEnabled ? "on" : "off");
   updateVoiceButton();
 });
@@ -1389,12 +1479,10 @@ function extPoseDrawSkeleton(ctx, keypoints, cw, ch, srcW, srcH) {
 async function extPoseInit() {
   const btn = document.getElementById("ext-pose-btn");
   try {
-    // Point WASM files to the same CDN version
-    if (window.tf?.wasm?.setWasmPaths) {
-      tf.wasm.setWasmPaths(
-        "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@4.22.0/dist/"
-      );
-    }
+    // Disable threaded-SIMD build: it spawns a blob: Web Worker which the MV3
+    // extension CSP blocks (blob: is not 'self'). Non-threaded SIMD still works.
+    tf.env().set("WASM_HAS_MULTITHREAD_SUPPORT", false);
+    tf.wasm.setWasmPaths(chrome.runtime.getURL("lib/"));
     await tf.setBackend("wasm");
     await tf.ready();
 
@@ -1579,3 +1667,21 @@ if (window.tf && window.poseDetection) {
     }
   });
 }
+
+// Open YouTube when no video is detected
+document.getElementById("browse-youtube-btn")?.addEventListener("click", () => {
+  chrome.tabs.create({ url: "https://www.youtube.com" });
+});
+
+// Re-detect video when panel becomes visible (user switched back to a YT tab)
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState !== "visible" || currentVideoUrl) return;
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.url?.includes("youtube.com/watch")) {
+      const vidKey = new URL(tab.url).searchParams.get("v") || null;
+      setVideo(tab.url, tab.title, null, vidKey);
+      try { await loadCachedAnalysis(tab.url); } catch {}
+    }
+  } catch {}
+});

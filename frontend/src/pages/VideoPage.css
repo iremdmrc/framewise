@@ -526,6 +526,141 @@
   background: var(--fw-rust-ink);
   border-color: var(--fw-rust-ink);
 }
+.vp-dancer-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Framewise fullscreen button — sits in the player corner when skeleton is active */
+.vp-fw-fs-btn {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  z-index: 20;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, .22);
+  background: rgba(14, 8, 5, .65);
+  backdrop-filter: blur(6px);
+  color: rgba(255, 255, 255, .8);
+  cursor: pointer;
+  transition: background .1s, color .1s;
+}
+.vp-fw-fs-btn:hover {
+  background: rgba(14, 8, 5, .88);
+  color: #fff;
+  border-color: rgba(255, 255, 255, .4);
+}
+
+/* Framewise fullscreen — player wrapper takes over the viewport */
+.vp-player:fullscreen,
+.vp-player:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
+  border: none;
+  background: #000;
+}
+
+.vp-player:fullscreen iframe,
+.vp-player:-webkit-full-screen iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: unset;
+}
+
+.vp-player:fullscreen .vp-dancer-canvas,
+.vp-player:-webkit-full-screen .vp-dancer-canvas {
+  z-index: 10;
+}
+
+.vp-player:fullscreen .vp-fw-fs-btn,
+.vp-player:-webkit-full-screen .vp-fw-fs-btn {
+  bottom: 14px;
+  right: 14px;
+}
+
+.vp-dancer-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .04em;
+  color: var(--fw-rust);
+  padding: 2px 0;
+}
+
+.vp-dancer-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fw-rust);
+  box-shadow: 0 0 5px var(--fw-rust);
+  flex-shrink: 0;
+  animation: vp-blink 1.4s ease-in-out infinite;
+}
+
+@keyframes vp-blink { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+
+.vp-pose-hint {
+  font-size: 11.5px;
+  color: var(--fw-ink-3);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.vp-dancer-picker {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.vp-dancer-picker-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  letter-spacing: .1em;
+  color: var(--fw-ink-3);
+  text-transform: uppercase;
+  margin-right: 2px;
+}
+
+.vp-dancer-pick-btn {
+  padding: 3px 9px;
+  border-radius: 5px;
+  border: 1px solid var(--fw-rule);
+  background: transparent;
+  color: var(--fw-ink-3);
+  font-size: 11px;
+  font-family: 'Geist', system-ui, sans-serif;
+  cursor: pointer;
+  transition: background .1s, color .1s, border-color .1s;
+}
+
+.vp-dancer-pick-btn:hover {
+  background: var(--fw-surface);
+  color: var(--fw-ink);
+  border-color: var(--fw-rust);
+}
+
+.vp-dancer-pick-btn.active {
+  background: rgba(197, 106, 67, .12);
+  color: var(--fw-rust);
+  border-color: var(--fw-rust);
+  font-weight: 600;
+}
+
 .vp-pose-tracker {
   display: flex;
   flex-direction: column;

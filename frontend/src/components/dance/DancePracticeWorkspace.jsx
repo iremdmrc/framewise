@@ -48,6 +48,10 @@ export default function DancePracticeWorkspace({ video, danceSegments = [], onCl
   const coachAudioRef = useRef(null);
   const keypointCountRef = useRef(0);
   const poseStatsRef = useRef({ max: 0, sum: 0, frames: 0 });
+  const [sessionStats, setSessionStats] = useState({ avgKp: 0, accuracyPct: 0, sectionCount: 0, totalSections: 0 });
+  const segmentsPracticed = useRef(new Set());
+  const loopCount = useRef(0);
+  const speedsUsed = useRef(new Set([1]));
 
   // Dancer tracking refs
   const skipCompareRef = useRef(false);
@@ -145,6 +149,7 @@ export default function DancePracticeWorkspace({ video, danceSegments = [], onCl
   const applySpeed = useCallback((r) => {
     setSpeed(r);
     playerRef.current?.setPlaybackRate?.(r);
+    speedsUsed.current.add(r);
   }, []);
 
   const startLoop = useCallback((seg) => {
@@ -166,6 +171,7 @@ export default function DancePracticeWorkspace({ video, danceSegments = [], onCl
   const handleSegmentClick = (seg, idx) => {
     setActiveSegIdx(idx);
     seekTo(seg.startTime);
+    segmentsPracticed.current.add(idx);
   };
 
   const handleLoopToggle = (e, seg, idx) => {
@@ -175,10 +181,15 @@ export default function DancePracticeWorkspace({ video, danceSegments = [], onCl
     } else {
       setActiveSegIdx(idx);
       startLoop(seg);
+      segmentsPracticed.current.add(idx);
+      loopCount.current += 1;
     }
   };
 
   const startSession = async () => {
+    segmentsPracticed.current = new Set([activeSegIdx]);
+    loopCount.current = 0;
+    speedsUsed.current = new Set([speed]);
     setSessionStart(Date.now());
     setSessionElapsed(0);
     setPhase("practicing");
@@ -308,16 +319,64 @@ export default function DancePracticeWorkspace({ video, danceSegments = [], onCl
     const mins = Math.floor(sessionElapsed / 60);
     const secs = sessionElapsed % 60;
     const durationStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-    const segNames = danceSegments.slice(0, 6).map((s) => s.title).join(", ") || "various sections";
+
     const stats = { ...poseStatsRef.current };
     poseStatsRef.current = { max: 0, sum: 0, frames: 0 };
     const avgKp = stats.frames > 0 ? Math.round(stats.sum / stats.frames) : 0;
-    const poseNote = poseStatus === "active"
-      ? `My body was tracked throughout — averaging ${avgKp}/17 joints and peaking at ${stats.max}/17.`
-      : "I didn't use pose tracking this session.";
-    const prompt = `I just completed a ${durationStr} dance practice session working on: ${segNames}. ${poseNote} As my dance coach, give me 2–3 sentences of specific feedback on my form and timing compared to the choreography in the video. Be direct and encouraging like a real coach — reference the actual moves I practiced. No bullet points or headers.`;
+    const accuracyPct = stats.frames > 0 ? Math.round((stats.sum / stats.frames / 17) * 100) : 0;
 
-    let feedbackText = "Great work putting in the practice time! Consistency is what separates good dancers from great ones. Keep it up.";
+    // Sections actually visited during session
+    const practicedIndices = Array.from(segmentsPracticed.current);
+    const practicedNames = practicedIndices.map((i) => danceSegments[i]?.title).filter(Boolean);
+    const totalSections = danceSegments.length;
+    const sectionsSummary = practicedNames.length > 0
+      ? `${practicedNames.join(", ")} (${practicedNames.length} of ${totalSections || "?"} sections)`
+      : totalSections > 0 ? "no sections selected" : "no dance sections loaded";
+
+    // Honest pose tracking assessment
+    let trackingNote;
+    if (poseStatus !== "active" || stats.frames < 5) {
+      trackingNote = "Pose tracking was not used — no body movement data available.";
+    } else if (accuracyPct < 25) {
+      trackingNote = `Pose tracking was very poor: only ${avgKp}/17 joints detected on average (${accuracyPct}%). The camera likely couldn't see most of the body, so form assessment is severely limited.`;
+    } else if (accuracyPct < 50) {
+      trackingNote = `Pose tracking captured about half the body: ${avgKp}/17 joints average (${accuracyPct}%). Lower body or one side was frequently out of frame.`;
+    } else if (accuracyPct < 70) {
+      trackingNote = `Pose tracking was moderate: ${avgKp}/17 joints average (${accuracyPct}%). Most of the body was visible with some joints occasionally missed.`;
+    } else {
+      trackingNote = `Pose tracking was strong: ${avgKp}/17 joints average (${accuracyPct}%). Good full-body visibility throughout.`;
+    }
+
+    // Speed
+    const speeds = Array.from(speedsUsed.current).sort((a, b) => a - b);
+    let speedNote = "Practiced at normal speed (1×).";
+    if (speeds.some((s) => s < 1)) {
+      speedNote = `Used slow-motion practice (${speeds.filter((s) => s < 1).map((s) => `${s}×`).join(", ")}), which is good for learning new moves.`;
+    } else if (speeds.some((s) => s > 1)) {
+      speedNote = `Practiced at faster speed (${speeds.filter((s) => s > 1).map((s) => `${s}×`).join(", ")}).`;
+    }
+
+    // Loops
+    const loopNote = loopCount.current > 0
+      ? `Used section repeat ${loopCount.current} time${loopCount.current !== 1 ? "s" : ""} to drill specific moves.`
+      : "Did not use section repeat.";
+
+    const prompt = `I just finished a ${durationStr} dance practice session. Here is the actual session data:
+- Sections worked on: ${sectionsSummary}
+- ${trackingNote}
+- ${speedNote}
+- ${loopNote}
+
+As my dance coach, give 2–3 sentences of honest, specific feedback based only on this data. Do not give generic encouragement. If tracking was poor, be honest about the limitations. If sections were skipped, point that out. If slow-motion was used, acknowledge the deliberate approach. Be direct, like a coach who has the actual numbers in front of them. No bullet points or headers.`;
+
+    setSessionStats({ avgKp, accuracyPct, sectionCount: practicedNames.length, totalSections });
+
+    let feedbackText = "You put in the time, but the data is limited — pose tracking wasn't active, so I can't give specific form feedback. Next session, make sure your full body is in frame from the start.";
+    if (poseStatus === "active" && stats.frames >= 5) {
+      feedbackText = accuracyPct >= 70
+        ? "Good session with solid body visibility throughout. Keep working on the sections you practiced today."
+        : "Session complete, but camera positioning limited what could be tracked. Try stepping back so your full body is visible for more accurate feedback.";
+    }
     let feedbackMessage = null;
     try {
       const res = await chatAPI.sendMessage(video._id, prompt, "dance", { persistUser: false });
@@ -356,7 +415,11 @@ export default function DancePracticeWorkspace({ video, danceSegments = [], onCl
     setPhase("ready");
     setSessionElapsed(0);
     setFeedback("");
+    setSessionStats({ avgKp: 0, accuracyPct: 0, sectionCount: 0, totalSections: 0 });
     poseStatsRef.current = { max: 0, sum: 0, frames: 0 };
+    segmentsPracticed.current = new Set();
+    loopCount.current = 0;
+    speedsUsed.current = new Set([1]);
   };
 
   const activeSeg = danceSegments[activeSegIdx];
@@ -421,6 +484,23 @@ export default function DancePracticeWorkspace({ video, danceSegments = [], onCl
               </button>
             ))}
           </div>
+
+          {phase === "practicing" && activeSeg && (
+            <div className="dpw-move-cue-bar">
+              <span className="dpw-move-cue-label">NOW PRACTICING</span>
+              <span className="dpw-move-cue-name">{activeSeg.title}</span>
+              {(activeSeg.movementCue || activeSeg.bodyPosition) && (
+                <div className="dpw-move-cue-details">
+                  {activeSeg.bodyPosition && (
+                    <span className="dpw-move-body-tag">{activeSeg.bodyPosition}</span>
+                  )}
+                  {activeSeg.movementCue && (
+                    <span className="dpw-move-cue-text">{activeSeg.movementCue}</span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="dpw-seg-list">
             {danceSegments.length === 0 ? (
@@ -583,9 +663,34 @@ export default function DancePracticeWorkspace({ video, danceSegments = [], onCl
               <span className="dpw-feedback-eyebrow">SESSION COMPLETE</span>
               <h2 className="dpw-feedback-title">Practice Summary</h2>
               <p className="dpw-feedback-meta">
-                {Math.floor(sessionElapsed / 60)}m {sessionElapsed % 60}s &nbsp;·&nbsp; {danceSegments.length} sections
+                {Math.floor(sessionElapsed / 60)}m {sessionElapsed % 60}s
+                {sessionStats.sectionCount > 0 && ` · ${sessionStats.sectionCount} section${sessionStats.sectionCount !== 1 ? "s" : ""} practiced`}
               </p>
             </div>
+
+            {sessionStats.avgKp > 0 && (
+              <div className="dpw-stats-grid">
+                <div className="dpw-stat-block">
+                  <span
+                    className="dpw-stat-val"
+                    style={{ color: sessionStats.accuracyPct >= 70 ? "#B5CC92" : sessionStats.accuracyPct >= 45 ? "#F5C36C" : "#EE9268" }}
+                  >
+                    {sessionStats.accuracyPct}%
+                  </span>
+                  <span className="dpw-stat-label">Body visibility</span>
+                </div>
+                <div className="dpw-stat-block">
+                  <span className="dpw-stat-val">{sessionStats.avgKp}/17</span>
+                  <span className="dpw-stat-label">Avg joints</span>
+                </div>
+                {sessionStats.sectionCount > 0 && (
+                  <div className="dpw-stat-block">
+                    <span className="dpw-stat-val">{sessionStats.sectionCount}/{sessionStats.totalSections || "?"}</span>
+                    <span className="dpw-stat-label">Sections</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="dpw-feedback-body">
               {feedbackLoading ? (

@@ -29,7 +29,7 @@ export default function App() {
         <Route path="history" element={<HistoryPage />} />
         <Route path="video/:videoId" element={<VideoPage />} />
         <Route path="settings" element={<SettingsPage />} />
-        {/* Legacy redirect — AnalyzePage now lives on Dashboard */}
+        {/* Legacy redirect: analysis now lives on the dashboard. */}
         <Route path="analyze" element={<Navigate to="/app" replace />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

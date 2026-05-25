@@ -6,17 +6,15 @@
   "permissions": ["storage", "activeTab", "scripting", "sidePanel", "tabs"],
   "host_permissions": [
     "https://www.youtube.com/*",
+    "https://img.youtube.com/*",
     "http://localhost:3001/*",
-    "http://localhost:5174/*",
-    "https://cdn.jsdelivr.net/*",
-    "https://tfhub.dev/*",
-    "https://storage.googleapis.com/*"
+    "http://localhost:5174/*"
   ],
   "background": {
     "service_worker": "src/background.js"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; object-src 'self'"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   },
   "content_scripts": [
     {
@@ -30,6 +28,12 @@
   "side_panel": {
     "default_path": "src/panel/panel.html"
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["lib/*.wasm"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "action": {
     "default_title": "Framewise",
     "default_icon": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png" }

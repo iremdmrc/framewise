@@ -42,6 +42,8 @@ export default function Icon({ name, size = 16, stroke = 1.5, style = {}, classN
     analyze:   <><path d="M3 3l7 7M21 3l-7 7M12 10v11"/><circle cx="12" cy="10" r="3"/></>,
     x:         <path d="M18 6L6 18M6 6l12 12"/>,
     stop:      <rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" stroke="none"/>,
+    expand:    <path d="M3 8V3h5M21 8V3h-5M3 16v5h5M21 16v5h-5"/>,
+    compress:  <path d="M8 3v5H3M16 3v5h5M8 21v-5H3M16 21v-5h5"/>,
   };
 
   return (
