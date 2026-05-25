@@ -3,8 +3,8 @@ import { useAuth } from "../context/AuthContext";
 import FramewiseMark from "../components/FramewiseMark";
 import Icon from "../components/Icon";
 import { useTheme } from "../hooks/useTheme";
-import studyCaptionDemo from "../assets/Study Caption Integration.mov";
-import dancePracticeDemo from "../assets/Dance Practice Tutorial.mov";
+const studyCaptionDemo = null;
+const dancePracticeDemo = null;
 import "./LandingPage.css";
 
 const FEATURES = [
