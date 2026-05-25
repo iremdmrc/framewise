@@ -4,12 +4,19 @@
   "version": "1.0.0",
   "description": "AI-powered video learning assistant — timelines, chat, and voice.",
   "permissions": ["storage", "activeTab", "scripting", "sidePanel", "tabs"],
-  "host_permissions": ["https://www.youtube.com/*", "http://localhost:3001/*", "http://localhost:5174/*"],
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "http://localhost:3001/*",
+    "http://localhost:5174/*",
+    "https://cdn.jsdelivr.net/*",
+    "https://tfhub.dev/*",
+    "https://storage.googleapis.com/*"
+  ],
   "background": {
     "service_worker": "src/background.js"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; object-src 'self'"
   },
   "content_scripts": [
     {

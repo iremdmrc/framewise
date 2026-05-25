@@ -36,6 +36,11 @@
 .lp-icon-btn:hover { background: var(--fw-bg-deep); color: var(--fw-ink); }
 .lp-btn-outline { padding: 8px 16px; border-radius: 999px; border: 1px solid var(--fw-ink); background: transparent; color: var(--fw-ink); font-family: 'Geist',system-ui,sans-serif; font-size: 13px; font-weight: 500; cursor: pointer; letter-spacing: -.01em; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; transition: background .12s; }
 .lp-btn-outline:hover { background: var(--fw-bg-deep); }
+.lp-nav-user-chip { display: flex; align-items: center; gap: 7px; padding: 4px 10px 4px 4px; border-radius: 999px; border: 1px solid var(--fw-rule); background: var(--fw-surface); }
+.lp-nav-avatar { width: 22px; height: 22px; border-radius: 50%; background: var(--fw-rust); color: #fff; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.lp-nav-user-name { font-size: 12.5px; color: var(--fw-ink-2); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lp-nav-signout { border: none; background: none; font-size: 12px; color: var(--fw-ink-3); cursor: pointer; padding: 0; font-family: inherit; }
+.lp-nav-signout:hover { color: var(--fw-rust); }
 .lp-hero { position: relative; z-index: 1; padding: 72px 80px 20px; max-width: 1180px; }
 .lp-hero-pill { display: inline-flex; align-items: center; gap: 8px; padding: 5px 11px 5px 9px; border-radius: 999px; background: var(--fw-surface); border: 1px solid var(--fw-rule); margin-bottom: 26px; }
 .lp-hero-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--fw-sage); box-shadow: 0 0 8px rgba(114,135,91,.6); }

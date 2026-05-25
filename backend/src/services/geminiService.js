@@ -36,6 +36,19 @@ function isGeminiQuotaError(err) {
   return message.includes("429") || message.toLowerCase().includes("quota") || message.toLowerCase().includes("too many requests");
 }
 
+function isGeminiFetchError(err) {
+  const message = err?.message || "";
+  return (
+    err instanceof TypeError ||
+    message.includes("fetch failed") ||
+    message.includes("ECONNRESET") ||
+    message.includes("ENOTFOUND") ||
+    message.includes("ETIMEDOUT") ||
+    message.includes("socket hang up") ||
+    message.includes("network error")
+  );
+}
+
 async function withRetry(fn, retries = 4, delayMs = 800) {
   for (let i = 0; i < retries; i++) {
     try {
@@ -43,10 +56,14 @@ async function withRetry(fn, retries = 4, delayMs = 800) {
     } catch (err) {
       const is503 = err?.message?.includes("503") || err?.message?.includes("Service Unavailable");
       const isQuota = isGeminiQuotaError(err);
-      if ((is503 || isQuota) && i < retries - 1) {
-        const fallback = delayMs * (2 ** i);
+      const isFetch = isGeminiFetchError(err);
+      if ((is503 || isQuota || isFetch) && i < retries - 1) {
+        const fallback = isQuota
+          ? Math.max(8_000, delayMs * (2 ** i))  // quota: minimum 8s between retries
+          : delayMs * (2 ** i);
         const waitMs = isQuota ? getGeminiRetryDelay(err, fallback) : fallback;
-        console.log(`Gemini ${isQuota ? "quota" : "503"} - retrying in ${Math.round(waitMs / 1000)}s (attempt ${i + 2}/${retries})`);
+        const reason = isQuota ? "quota" : isFetch ? "fetch error" : "503";
+        console.log(`Gemini ${reason} - retrying in ${Math.round(waitMs / 1000)}s (attempt ${i + 2}/${retries})`);
         await new Promise((r) => setTimeout(r, waitMs));
       } else {
         throw err;
@@ -90,7 +107,28 @@ function safeText(result) {
 const TOPIC_CHUNK_SECONDS = Number(process.env.GEMINI_TOPIC_CHUNK_SECONDS) || 900;
 const DANCE_CHUNK_SECONDS = Number(process.env.GEMINI_DANCE_CHUNK_SECONDS) || 900;
 const CAPTION_CHUNK_SECONDS = Number(process.env.GEMINI_CAPTION_CHUNK_SECONDS) || 180;
-const CHUNK_CONCURRENCY = Number(process.env.GEMINI_CHUNK_CONCURRENCY) || 2;
+const CHUNK_CONCURRENCY = Number(process.env.GEMINI_CHUNK_CONCURRENCY) || 3;
+
+// Global sliding-window rate gate.
+// Queues requests rather than letting them crash with 429s.
+// Default: 14 req/min — just under flash-lite free-tier ceiling of 15 RPM.
+const GEMINI_RPM_LIMIT = Number(process.env.GEMINI_RPM) || 14;
+const _rateWindow = [];
+
+async function acquireRateSlot() {
+  const windowMs = 61_000; // 61 s to give the API a little breathing room
+  for (;;) {
+    const now = Date.now();
+    while (_rateWindow.length && now - _rateWindow[0] >= windowMs) _rateWindow.shift();
+    if (_rateWindow.length < GEMINI_RPM_LIMIT) {
+      _rateWindow.push(now);
+      return;
+    }
+    const waitMs = windowMs - (now - _rateWindow[0]) + 100;
+    console.log(`Gemini rate gate — ${_rateWindow.length}/${GEMINI_RPM_LIMIT} req in window, waiting ${Math.round(waitMs / 1000)}s`);
+    await new Promise((r) => setTimeout(r, waitMs));
+  }
+}
 
 function buildYoutubePart(videoUrl, clip = null) {
   const part = {
@@ -111,6 +149,7 @@ function buildYoutubePart(videoUrl, clip = null) {
 }
 
 async function generateContent(parts) {
+  await acquireRateSlot();
   let lastError = null;
 
   for (const modelName of modelCandidates) {
@@ -124,6 +163,7 @@ async function generateContent(parts) {
         message.includes("not found for API version") ||
         message.includes("no longer available");
 
+      // fetch errors are transient — withRetry already exhausted its retries; rethrow
       if (!isUnavailableModel) throw err;
       console.warn(`Gemini model ${modelName} is unavailable; trying the next configured model.`);
     }

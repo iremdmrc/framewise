@@ -10,6 +10,8 @@ let activeSegmentIndex = -1; // currently highlighted segment
 let voiceEnabled = false;
 let voiceProfile = "default";
 let captionAutoInject = false;
+let chatLoading = false;
+let currentVideoMode = "general";
 const ANALYZE_POLL_MS = 2000;
 
 // ── Auth helpers ────────────────────────────────────────────────────────────────
@@ -161,6 +163,7 @@ document.getElementById("theme-toggle-btn").addEventListener("click", () => {
 // ── Chat suggestion chips ─────────────────────────────────────────────────────
 document.querySelectorAll(".chip-btn").forEach((chip) => {
   chip.addEventListener("click", () => {
+    if (chatLoading) return;
     const input = document.getElementById("chat-input");
     input.value = chip.dataset.msg;
     sendChat();
@@ -194,6 +197,8 @@ setInterval(async () => {
       // Scroll active segment into view
       const active = document.querySelector("#segments .segment.active");
       if (active) active.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      // Trigger pose snap when entering a new dance segment
+      if (newIdx >= 0) extPoseSnapSchedule(t);
     }
   } catch {}
 }, 2000);
@@ -406,6 +411,7 @@ function applyVideoMode(video) {
   const effectiveMode = (video.modeOverride && video.modeOverride !== "auto")
     ? video.modeOverride
     : (video.detectedMode || "general");
+  currentVideoMode = effectiveMode;
 
   // Update mode indicator badge
   const modeEl = document.getElementById("video-mode");
@@ -731,8 +737,13 @@ function renderDanceSegments(segments) {
 async function loadChatHistory() {
   if (!currentVideoId) return;
   const messages = await apiFetch(`/chat/${currentVideoId}/history`, "GET");
-  document.getElementById("chat-area").innerHTML = "";
+  const area = document.getElementById("chat-area");
+  area.innerHTML = "";
   messages.forEach(appendMessage);
+  area.scrollTop = area.scrollHeight;
+  // Keep suggestion chips visible if no history yet
+  const chips = document.getElementById("chat-chips");
+  if (chips && !messages.length) chips.style.display = "";
 }
 
 document.getElementById("toggle-voice-btn").addEventListener("click", () => {
@@ -749,33 +760,68 @@ document.getElementById("chat-input").addEventListener("keydown", (e) => {
 
 async function sendChat() {
   const input = document.getElementById("chat-input");
+  const sendBtn = document.getElementById("send-btn");
   const content = input.value.trim();
-  const status = document.getElementById("status");
-  if (!content) return;
+  if (!content || chatLoading) return;
   if (!currentVideoId) {
-    status.textContent = "Analyze this video before chatting.";
+    showChatError("Analyze this video first to start chatting.");
     return;
   }
+
+  chatLoading = true;
+  input.disabled = true;
+  sendBtn.disabled = true;
   input.value = "";
+
   appendMessage({ role: "user", content });
+  const typingEl = showTypingIndicator();
+  document.getElementById("status").textContent = "Thinking…";
+
   try {
-    status.textContent = "Asking Gemini...";
-    // Dance mode is now implicitly handled by context if ever needed, but UI is removed as requested
-    const msg = await apiFetch(`/chat/${currentVideoId}/message`, "POST", { content });
+    const videoTime = await getCurrentVideoTime().catch(() => null);
+    const mode = currentVideoMode === "dance" ? "dance" : undefined;
+    const body = { content };
+    if (mode) body.mode = mode;
+    if (videoTime != null) body.currentTime = Math.floor(videoTime);
+
+    const msg = await apiFetch(`/chat/${currentVideoId}/message`, "POST", body);
+    typingEl.remove();
     appendMessage(msg);
 
-    // If voice is enabled, read the response aloud
-    if (voiceEnabled) {
-      speak(msg.content);
-    }
-
+    if (voiceEnabled) speak(msg.content);
     if (msg.linkedSegmentTime != null) seekTo(msg.linkedSegmentTime);
     await dispatchChatAction(msg);
-    status.textContent = "Answer ready";
+    document.getElementById("status").textContent = "Ready";
   } catch (e) {
-    status.textContent = "Chat error: " + e.message;
+    typingEl.remove();
+    showChatError(e.message || "Something went wrong. Try again.");
+    document.getElementById("status").textContent = "Chat error";
     console.error("Chat error:", e);
+  } finally {
+    chatLoading = false;
+    input.disabled = false;
+    sendBtn.disabled = false;
+    input.focus();
   }
+}
+
+function showTypingIndicator() {
+  const area = document.getElementById("chat-area");
+  const el = document.createElement("div");
+  el.className = "fw-typing";
+  el.innerHTML = `<span></span><span></span><span></span>`;
+  area.appendChild(el);
+  area.scrollTop = area.scrollHeight;
+  return el;
+}
+
+function showChatError(message) {
+  const area = document.getElementById("chat-area");
+  const el = document.createElement("div");
+  el.className = "msg assistant error";
+  el.innerHTML = `⚠ ${escapeHtml(message || "Something went wrong. Try again.")}`;
+  area.appendChild(el);
+  area.scrollTop = area.scrollHeight;
 }
 
 async function speak(text) {
@@ -928,7 +974,7 @@ function renderCaptions(captions) {
   updateTranslatedToggle();
 
   const header = document.createElement("p");
-  header.style.cssText = "font-size:10px;color:#A0AEC0;font-weight:600;padding:4px 0;";
+  header.style.cssText = "font-size:10px;color:var(--fw-ink-3);font-weight:600;padding:4px 0;";
   header.textContent = `${captions.length} captions — click to jump`;
   container.appendChild(header);
 
@@ -939,7 +985,7 @@ function renderCaptions(captions) {
     const displayText = captionsShowTranslated && caption.translatedText
       ? caption.translatedText
       : (caption.correctedText || caption.text);
-    el.innerHTML = `<span style="font-size:10px;color:var(--teal);font-weight:700;flex-shrink:0;padding-top:1px;">${formatTime(caption.startTime)}</span><span style="font-size:11px;line-height:1.45;">${displayText}</span>`;
+    el.innerHTML = `<span style="font-size:10px;color:var(--fw-rust);font-weight:700;flex-shrink:0;padding-top:1px;">${formatTime(caption.startTime)}</span><span style="font-size:11px;line-height:1.45;">${displayText}</span>`;
     el.addEventListener("click", () => seekTo(caption.startTime));
     container.appendChild(el);
   });
@@ -949,7 +995,7 @@ function updateInjectBtn() {
   const btn = document.getElementById("caption-inject-btn");
   if (!btn) return;
   btn.textContent = captionsInjected ? "Captions on - hide" : "Add captions to video";
-  btn.style.background = captionsInjected ? "#276749" : "";
+  btn.style.background = captionsInjected ? "var(--fw-ok)" : "";
 }
 
 function updateTranslatedToggle() {
@@ -1182,7 +1228,12 @@ function appendMessage(msg) {
   const area = document.getElementById("chat-area");
   const el = document.createElement("div");
   el.className = `msg ${msg.role}`;
-  el.textContent = msg.content;
+
+  // Render **bold** and newlines; content is HTML-escaped first to prevent XSS
+  el.innerHTML = escapeHtml(msg.content || "")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\n/g, "<br>");
+
   if (msg.linkedSegmentTime != null) {
     const btn = document.createElement("button");
     btn.className = "fw-jump-btn";
@@ -1279,4 +1330,252 @@ function formatDuration(seconds) {
   const s = Math.floor(seconds % 60);
   if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+// ── Extension Pose Tracking ───────────────────────────────────────────────────
+
+const EXT_POSE = {
+  detector: null,
+  stream: null,
+  raf: null,
+  active: false,
+  ready: false,
+  lastKp: 0,
+  snapCooldown: 0,
+  reviews: [],
+};
+
+const POSE_CONNECTIONS = [
+  [5,6],[5,7],[7,9],[6,8],[8,10],  // arms + shoulders
+  [5,11],[6,12],[11,12],            // torso
+  [11,13],[13,15],[12,14],[14,16], // legs
+  [0,1],[0,2],[1,3],[2,4],          // face
+];
+
+function extPoseDrawSkeleton(ctx, keypoints, cw, ch, srcW, srcH) {
+  const scaleX = cw / srcW;
+  const scaleY = ch / srcH;
+
+  const pts = keypoints.map(kp => ({
+    x: kp.x * scaleX,
+    y: kp.y * scaleY,
+    score: kp.score || 0,
+  }));
+
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(181,204,146,0.8)";
+  for (const [a, b] of POSE_CONNECTIONS) {
+    if (pts[a]?.score > 0.3 && pts[b]?.score > 0.3) {
+      ctx.beginPath();
+      ctx.moveTo(pts[a].x, pts[a].y);
+      ctx.lineTo(pts[b].x, pts[b].y);
+      ctx.stroke();
+    }
+  }
+
+  for (const pt of pts) {
+    if (pt.score > 0.3) {
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(197,106,67,0.95)";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(251,241,214,0.55)";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
+}
+
+async function extPoseInit() {
+  const btn = document.getElementById("ext-pose-btn");
+  try {
+    // Point WASM files to the same CDN version
+    if (window.tf?.wasm?.setWasmPaths) {
+      tf.wasm.setWasmPaths(
+        "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@4.22.0/dist/"
+      );
+    }
+    await tf.setBackend("wasm");
+    await tf.ready();
+
+    EXT_POSE.detector = await poseDetection.createDetector(
+      poseDetection.SupportedModels.MoveNet,
+      { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
+    );
+    EXT_POSE.ready = true;
+    btn.textContent = "Start webcam";
+    btn.disabled = false;
+  } catch (e) {
+    console.warn("Ext pose init failed:", e);
+    btn.textContent = "Unavailable";
+    btn.disabled = true;
+  }
+}
+
+async function extPoseStart() {
+  const btn = document.getElementById("ext-pose-btn");
+  const camWrap = document.getElementById("ext-pose-cam-wrap");
+  const idle = document.getElementById("ext-pose-idle");
+  const video = document.getElementById("ext-pose-video");
+
+  btn.disabled = true;
+  btn.textContent = "Starting…";
+  camWrap.classList.add("visible");
+
+  try {
+    EXT_POSE.stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15 } },
+      audio: false,
+    });
+    video.srcObject = EXT_POSE.stream;
+    await video.play();
+    idle.style.display = "none";
+
+    EXT_POSE.active = true;
+    btn.textContent = "Stop webcam";
+    btn.classList.add("active");
+    btn.disabled = false;
+
+    extPoseLoop();
+  } catch (e) {
+    camWrap.classList.remove("visible");
+    btn.textContent = "Start webcam";
+    btn.disabled = false;
+    idle.style.display = "";
+    console.warn("Webcam access denied:", e);
+  }
+}
+
+function extPoseStop() {
+  EXT_POSE.active = false;
+  if (EXT_POSE.raf) { cancelAnimationFrame(EXT_POSE.raf); EXT_POSE.raf = null; }
+  if (EXT_POSE.stream) { EXT_POSE.stream.getTracks().forEach(t => t.stop()); EXT_POSE.stream = null; }
+
+  const video = document.getElementById("ext-pose-video");
+  if (video) { video.srcObject = null; }
+  const camWrap = document.getElementById("ext-pose-cam-wrap");
+  if (camWrap) camWrap.classList.remove("visible");
+  const canvas = document.getElementById("ext-pose-canvas");
+  if (canvas) canvas.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
+
+  const btn = document.getElementById("ext-pose-btn");
+  if (btn) { btn.textContent = "Start webcam"; btn.classList.remove("active"); }
+
+  extPoseUpdateKpPill(0, false);
+}
+
+let extPoseLastFrameTime = 0;
+const EXT_POSE_FPS = 10; // lightweight: 10 fps in the sidebar
+
+async function extPoseLoop() {
+  if (!EXT_POSE.active) return;
+
+  const now = performance.now();
+  if (now - extPoseLastFrameTime < 1000 / EXT_POSE_FPS) {
+    EXT_POSE.raf = requestAnimationFrame(extPoseLoop);
+    return;
+  }
+  extPoseLastFrameTime = now;
+
+  const video = document.getElementById("ext-pose-video");
+  const canvas = document.getElementById("ext-pose-canvas");
+  if (!video || !canvas || video.readyState < 2) {
+    EXT_POSE.raf = requestAnimationFrame(extPoseLoop);
+    return;
+  }
+
+  // Sync canvas size to display size
+  const { offsetWidth: cw, offsetHeight: ch } = canvas;
+  if (canvas.width !== cw || canvas.height !== ch) {
+    canvas.width = cw || 320;
+    canvas.height = ch || 240;
+  }
+
+  try {
+    const poses = await EXT_POSE.detector.estimatePoses(video);
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (poses?.[0]?.keypoints) {
+      const kp = poses[0].keypoints;
+      const count = kp.filter(p => (p.score || 0) > 0.3).length;
+      EXT_POSE.lastKp = count;
+      extPoseUpdateKpPill(count, true);
+      extPoseDrawSkeleton(ctx, kp, canvas.width, canvas.height, video.videoWidth, video.videoHeight);
+    } else {
+      extPoseUpdateKpPill(0, true);
+    }
+  } catch {}
+
+  EXT_POSE.raf = requestAnimationFrame(extPoseLoop);
+}
+
+function extPoseUpdateKpPill(count, active) {
+  const dot = document.getElementById("ext-pose-kp-dot");
+  const label = document.getElementById("ext-pose-kp-label");
+  if (!dot || !label) return;
+  dot.className = "ext-pose-kp-dot" + (active && count > 4 ? " active" : "");
+  label.textContent = active ? `${count}/17 joints` : "—";
+}
+
+function extPoseSnapSchedule(videoTimeSec) {
+  if (!EXT_POSE.active) return;
+  const now = Date.now();
+  if (now < EXT_POSE.snapCooldown) return;
+  EXT_POSE.snapCooldown = now + 8_000; // at most one snap per 8 seconds
+
+  // Delay snap by 2s to let the user settle into the pose
+  setTimeout(() => {
+    if (!EXT_POSE.active) return;
+    extPoseAddReview(videoTimeSec, EXT_POSE.lastKp);
+  }, 2000);
+}
+
+function extPoseAddReview(videoTimeSec, jointCount) {
+  const quality = jointCount >= 14 ? "great" : jointCount >= 9 ? "good" : jointCount >= 5 ? "ok" : "low";
+  const fill = Math.round((jointCount / 17) * 100);
+  const colors = { great: "#B5CC92", good: "#F5C36C", ok: "#E0A882", low: "#C56A43" };
+
+  EXT_POSE.reviews.unshift({ ts: videoTimeSec, joints: jointCount, quality, fill, color: colors[quality] });
+  if (EXT_POSE.reviews.length > 6) EXT_POSE.reviews.pop();
+
+  const list = document.getElementById("ext-reviews-list");
+  const empty = document.getElementById("ext-reviews-empty");
+  if (!list) return;
+  if (empty) empty.style.display = "none";
+
+  list.innerHTML = EXT_POSE.reviews.map(r => `
+    <div class="ext-review-card">
+      <span class="ext-review-ts">${formatTime(r.ts)}</span>
+      <div class="ext-review-bar">
+        <div class="ext-review-fill" style="width:${r.fill}%;background:${r.color}"></div>
+      </div>
+      <span class="ext-review-score">${r.joints}/17</span>
+    </div>
+  `).join("");
+}
+
+// Wire up the pose button
+document.getElementById("ext-pose-btn").addEventListener("click", () => {
+  if (!EXT_POSE.ready) return;
+  if (EXT_POSE.active) {
+    extPoseStop();
+  } else {
+    extPoseStart();
+  }
+});
+
+// Start loading TF.js + MoveNet as soon as the panel is ready
+// (loads in background — doesn't block UI)
+if (window.tf && window.poseDetection) {
+  extPoseInit();
+} else {
+  // Scripts may not be loaded yet — wait for them
+  window.addEventListener("load", () => {
+    if (window.tf && window.poseDetection) extPoseInit();
+    else {
+      const btn = document.getElementById("ext-pose-btn");
+      if (btn) { btn.textContent = "Model unavailable"; btn.disabled = true; }
+    }
+  });
 }

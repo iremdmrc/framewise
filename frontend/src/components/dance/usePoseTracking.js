@@ -61,9 +61,9 @@ function normalizePoseToCanvas(keypoints, srcW, srcH, tgtW, tgtH) {
 
 export function drawSkeleton(ctx, keypoints, canvasW, canvasH, videoW, videoH, colors = {}) {
   const {
-    line = "#00FF88",
-    dot = "#FF3366",
-    dotOutline = "rgba(255,255,255,.75)",
+    line = "#B5CC92",
+    dot = "#C56A43",
+    dotOutline = "rgba(251,241,214,0.7)",
     lineWidth = 3,
     dotRadius = 5,
   } = colors;

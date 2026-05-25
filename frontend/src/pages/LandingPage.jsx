@@ -15,11 +15,10 @@ const FEATURES = [
 ];
 
 export default function LandingPage() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const appLink = user ? "/app" : "/login";
-  const extensionLink = user ? "/app/settings?tab=extension" : "/login?mode=register";
 
   return (
     <div className={`lp fw fw-b fw-${theme}`}>
@@ -36,14 +35,21 @@ export default function LandingPage() {
         <nav className="lp-nav-links">
           <Link to="/" className="lp-nav-active">home</Link>
           <Link to={appLink}>library</Link>
-          <Link to={extensionLink}>extension</Link>
+          <Link to="/extension">extension</Link>
         </nav>
         <div className="lp-nav-right">
           <button className="lp-icon-btn" onClick={toggleTheme} aria-label="Toggle theme">
             <Icon name={theme === "dark" ? "sun" : "moon"} size={14} />
           </button>
           {user
-            ? <Link to="/app" className="lp-btn-outline">Library →</Link>
+            ? <>
+                <Link to="/app" className="lp-btn-outline">Library →</Link>
+                <span className="lp-nav-user-chip">
+                  <span className="lp-nav-avatar">{(user.displayName || user.email || "?")[0].toUpperCase()}</span>
+                  <span className="lp-nav-user-name">{user.displayName || user.email}</span>
+                  <button className="lp-nav-signout" onClick={logout} title="Sign out">Sign out</button>
+                </span>
+              </>
             : <>
                 <Link to="/login" className="lp-nav-signin">Sign in</Link>
                 <Link to="/login?mode=register" className="lp-btn-outline">Get started</Link>
@@ -77,7 +83,7 @@ export default function LandingPage() {
           <a className="lp-btn-ghost" href="chrome://extensions/">
             <Icon name="extension" size={13} /> chrome://extensions
           </a>
-          <button className="lp-btn-ghost" onClick={() => navigate(extensionLink)}>
+          <button className="lp-btn-ghost" onClick={() => navigate("/extension")}>
             Setup guide
           </button>
           <span className="lp-hero-note">free · no card</span>
@@ -124,7 +130,7 @@ export default function LandingPage() {
               <a className="lp-cta-btn-ghost" href="chrome://extensions/">
                 <Icon name="extension" size={13} /> Open extensions
               </a>
-              <button className="lp-cta-btn-ghost" onClick={() => navigate(extensionLink)}>
+              <button className="lp-cta-btn-ghost" onClick={() => navigate("/extension")}>
                 Setup guide
               </button>
             </div>

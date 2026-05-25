@@ -1,15 +1,19 @@
+<p align="center">
+  <img src="extension/icons/icon128.png" alt="Framewise" width="96" />
+</p>
+
 # Framewise
 
 Framewise is an AI-powered video learning assistant with two connected surfaces:
 
 - **Web app** — analyze YouTube videos, search your learning library, chat with videos, save notes and bookmarks, generate captions, quiz yourself, practice choreography, and organize videos into collections.
-- **Chrome extension** — works directly on YouTube with the same backend account and data. It loads saved timelines, enables chat, injects captions, loops dance segments, and syncs progress.
+- **Chrome extension** — works directly on YouTube with the same backend account and data. It loads saved timelines, enables chat, injects captions, loops dance segments, tracks your pose live, and syncs progress.
 
 The web app and extension are not separate products. They share the same Express API, MongoDB data, auth token, and AI pipeline.
 
 ## Collaboration Note
 
-This project has been built collaboratively across the stack. Ayse has contributed across frontend, backend, and extension — including product integration, library/search/bookmark/collection/progress flows, dance practice workspace, pose tracking, and the visual design system. Ownership in `TASKS.md` is a coordination aid, not a strict boundary.
+This project has been built collaboratively across the stack. Ayse has contributed across frontend, backend, and extension — including product integration, library/search/bookmark/collection/progress flows, dance practice workspace, pose tracking (web + extension), and the visual design system. Ownership in `TASKS.md` is a coordination aid, not a strict boundary.
 
 ## Current Status
 
@@ -17,7 +21,7 @@ Functional MVP+. YouTube-first flow is fully implemented; upload-based video ana
 
 **Implemented:**
 
-- Email/password auth and Google OAuth
+- Email/password auth and Google OAuth; auth-aware LandingPage nav with user chip and sign-out
 - YouTube URL analysis with Gemini (async job queue, progress polling)
 - Topic timeline generation and timestamp seeking
 - Video chat with timestamped answers and ElevenLabs voice replies
@@ -30,6 +34,10 @@ Functional MVP+. YouTube-first flow is fully implemented; upload-based video ana
   - Independent **Mirror Me** and **Mirror Video** controls
   - Loop sections, speed presets (0.5× – 1.5×), segment navigation
   - AI coach commentary after each session with ElevenLabs TTS and replay button
+- **Extension Practice tab** — live MoveNet webcam pose tracking inside the Chrome side panel
+  - 10 FPS skeleton overlay with keypoint count pill
+  - Auto pose snaps at each dance segment transition (2s delay, 8s cooldown)
+  - Timestamped review cards with quality score (Great / Good / Ok / Low)
 - Adaptive video mode: `auto` / `study` / `dance` detection with manual override
 - Library search across video titles and segment summaries
 - Bookmarks, notes, and AI-generated notes
@@ -37,6 +45,7 @@ Functional MVP+. YouTube-first flow is fully implemented; upload-based video ana
 - Continue watching with saved playback position
 - Auto-load analyzed timelines in the extension
 - Dark/light theme system with Framewise design tokens
+- Extension setup guide page at `/extension` (public, no auth required)
 
 ## Tech Stack
 
@@ -46,7 +55,7 @@ Functional MVP+. YouTube-first flow is fully implemented; upload-based video ana
 | Database | MongoDB Atlas |
 | AI video/chat | Gemini 2.5 via `@google/generative-ai` |
 | Voice + STT | ElevenLabs |
-| Pose tracking | TensorFlow.js + MoveNet SINGLEPOSE_LIGHTNING |
+| Pose tracking | TensorFlow.js + MoveNet SINGLEPOSE_LIGHTNING (web + extension) |
 | Web app | React 18, Vite, React Router |
 | Extension | Chrome Manifest V3, Side Panel API, content script |
 
@@ -70,7 +79,7 @@ framewise/
 ├── frontend/
 │   ├── src/
 │   │   ├── App.jsx
-│   │   ├── pages/           — LibraryPage, VideoPage, AnalyzePage, SettingsPage
+│   │   ├── pages/           — LibraryPage, VideoPage, AnalyzePage, SettingsPage, LandingPage, ExtensionPage
 │   │   ├── components/
 │   │   │   └── dance/       — DancePracticeWorkspace, usePoseTracking
 │   │   └── services/api.js
@@ -125,7 +134,8 @@ PORT=3001
 Optional:
 
 ```env
-GEMINI_CHUNK_CONCURRENCY=2          # raise only with paid quota
+GEMINI_RPM=14                       # max Gemini requests/min across the whole app (default 14, free-tier safe)
+GEMINI_CHUNK_CONCURRENCY=3          # parallel chunks per analysis call (drop to 1 only on very long videos)
 ELEVENLABS_COACH_VOICE_ID=...       # second voice for Settings → Coach voice
 ```
 
@@ -151,6 +161,8 @@ The frontend Vite dev server proxies `/api` to `http://localhost:3001`.
 
 ## Chrome Extension Setup
 
+A full setup guide is available at `http://localhost:5174/extension` once the frontend is running. Quick steps:
+
 1. Start backend and frontend with `npm run dev`.
 2. Sign in on the web app at `http://localhost:5174/login`.
 3. Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select the `extension/` folder.
@@ -173,6 +185,15 @@ The practice mode is a full-screen overlay accessible from any dance video's Pra
 When both are active you see the green user skeleton on your side and the orange dancer skeleton on the video side for a live side-by-side comparison.
 
 After each session the AI coach generates spoken feedback (ElevenLabs TTS) — replay it anytime from the session summary card.
+
+## Extension Pose Tracking
+
+The extension's Dance tab includes a live pose tracking camera panel:
+
+- Click **Enable Camera** to start — the browser prompts for webcam permission.
+- A green MoveNet skeleton overlays your live feed at 10 FPS (lightweight during YouTube playback).
+- The keypoint pill shows how many joints are detected and whether pose detection is active.
+- As you watch a dance video and the active segment changes, the extension automatically takes a pose snapshot (after a 2s delay, with an 8s cooldown). Each snapshot becomes a timestamped review card showing a quality score and colored progress bar.
 
 ## API Reference
 
@@ -243,7 +264,7 @@ db.videos.createIndex(
 ## Demo Flow
 
 1. `npm run dev` — confirm `http://localhost:3001/api/health` returns ok.
-2. Register a new account (or log in).
+2. Register a new account (or log in) — confirm user chip and sign-out appear in the landing nav.
 3. Paste a YouTube URL and analyze it. Watch the progress bar; confirm the timeline appears.
 4. Seek the player by clicking a segment timestamp.
 5. Ask the chat "Where does it explain the main idea?" — confirm a timestamped answer.
@@ -259,7 +280,9 @@ db.videos.createIndex(
 15. Override video mode to Study Queue; confirm UI adapts.
 16. Refresh — confirm the continue-watching position is restored.
 17. Load the extension, open the same YouTube URL — confirm the timeline auto-loads.
-18. Toggle light and dark theme.
+18. In the extension's Dance tab, enable the camera — confirm skeleton appears.
+19. Seek through dance segments — confirm pose snap review cards appear automatically.
+20. Toggle light and dark theme.
 
 ## Known Limitations
 
@@ -269,6 +292,7 @@ db.videos.createIndex(
 - Extension URLs are configured in `extension/src/config.js` for local dev; production packaging needs a final build-time config path.
 - Google OAuth requires matching client IDs in both `backend/.env` and `frontend/.env`.
 - Caption quality depends on available YouTube captions or ElevenLabs STT accuracy.
+- Extension pose tracking loads TF.js and MoveNet from CDN on first use — initial load takes a few seconds depending on connection speed.
 
 ## Adaptive Mode
 

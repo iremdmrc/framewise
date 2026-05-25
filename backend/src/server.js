@@ -49,9 +49,17 @@ app.get("/api/health", (req, res) => {
 app.use((err, req, res, next) => {
   const message = err?.message || "Internal server error";
   const isQuota = message.includes("429") || message.toLowerCase().includes("quota") || message.toLowerCase().includes("too many requests");
+  const isFetch = err instanceof TypeError || message.includes("fetch failed") || message.includes("ECONNRESET") || message.includes("ENOTFOUND") || message.includes("ETIMEDOUT");
+
   if (isQuota) {
     return res.status(429).json({
-      error: "Gemini quota is temporarily exhausted for this API key. Saved/generated content can still be opened from cache. Please try again later.",
+      error: "Gemini quota is temporarily exhausted. Please try again in a minute.",
+    });
+  }
+  if (isFetch) {
+    console.error("Gemini fetch error:", message);
+    return res.status(503).json({
+      error: "Could not reach the AI service. Please try again.",
     });
   }
   console.error(err.stack);

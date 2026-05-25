@@ -557,6 +557,135 @@
       padding: 10px 16px 8px;
     }
 
+    /* ── Extension pose tracking ── */
+    .ext-pose-wrap {
+      border-top: 1px solid var(--fw-rule);
+      border-bottom: 1px solid var(--fw-rule);
+      margin: 0 0 2px;
+    }
+    .ext-pose-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 14px 6px;
+    }
+    .ext-pose-eyebrow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9.5px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--fw-rust);
+      font-weight: 600;
+    }
+    .ext-pose-kp-pill {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--fw-ink-2);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .ext-pose-kp-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--fw-ink-4);
+    }
+    .ext-pose-kp-dot.active { background: #B5CC92; box-shadow: 0 0 5px rgba(181,204,146,.55); }
+    .ext-pose-btn {
+      font-size: 11px;
+      font-family: 'Geist', system-ui, sans-serif;
+      padding: 4px 10px;
+      border: 1px solid var(--fw-rule);
+      border-radius: 6px;
+      background: var(--fw-surface);
+      color: var(--fw-ink-2);
+      cursor: pointer;
+      transition: background .1s, color .1s;
+    }
+    .ext-pose-btn:hover { background: var(--fw-surface-2); color: var(--fw-ink); }
+    .ext-pose-btn.active { background: var(--fw-rust); color: #fff; border-color: transparent; }
+    .ext-pose-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .ext-pose-cam-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 4/3;
+      max-height: 180px;
+      background: #0E0805;
+      overflow: hidden;
+      display: none;
+    }
+    .ext-pose-cam-wrap.visible { display: block; }
+    .ext-pose-video {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+    }
+    .ext-pose-canvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+    }
+    .ext-pose-idle-overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 6px;
+      background: rgba(14,8,5,.8);
+    }
+    .ext-pose-idle-icon { font-size: 22px; opacity: .5; }
+    .ext-pose-idle-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px; letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--fw-ink-3);
+    }
+    /* Pose reviews */
+    .ext-reviews-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px 4px;
+    }
+    .ext-reviews-list {
+      padding: 0 14px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .ext-review-card {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 8px;
+      border: 1px solid var(--fw-rule);
+      border-radius: 6px;
+      background: var(--fw-surface);
+    }
+    .ext-review-ts {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--fw-rust);
+      flex-shrink: 0;
+      min-width: 32px;
+    }
+    .ext-review-bar {
+      flex: 1;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--fw-surface-inset);
+      overflow: hidden;
+    }
+    .ext-review-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: #B5CC92;
+    }
+    .ext-review-score {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--fw-ink-2);
+      flex-shrink: 0;
+    }
+
     /* ── Primary button ── */
     .primary {
       padding: 9px 14px;
@@ -696,7 +825,7 @@
       display: flex;
       flex-direction: column;
       gap: 7px;
-      max-height: 240px;
+      max-height: 280px;
       overflow-y: auto;
       padding: 8px 12px 4px;
       scrollbar-width: thin;
@@ -755,6 +884,11 @@
       font-family: 'JetBrains Mono', monospace;
       font-size: 10px;
       cursor: pointer;
+    }
+    .msg.error {
+      border-color: rgba(238,146,104,.35) !important;
+      color: var(--fw-err) !important;
+      font-size: 11.5px;
     }
 
     /* ── Bottom dock ── */
@@ -1071,6 +1205,36 @@
               <button class="primary" id="dance-analyze-btn">Dance summary</button>
               <button class="tool-btn" id="skeleton-btn">Open Practice</button>
             </div>
+
+            <!-- Live pose tracking -->
+            <div class="ext-pose-wrap">
+              <div class="ext-pose-header">
+                <span class="ext-pose-eyebrow">Live Pose</span>
+                <span class="ext-pose-kp-pill" id="ext-pose-kp-pill">
+                  <span class="ext-pose-kp-dot" id="ext-pose-kp-dot"></span>
+                  <span id="ext-pose-kp-label">—</span>
+                </span>
+                <button class="ext-pose-btn" id="ext-pose-btn" disabled>Loading…</button>
+              </div>
+              <div class="ext-pose-cam-wrap" id="ext-pose-cam-wrap">
+                <video id="ext-pose-video" class="ext-pose-video" playsinline muted></video>
+                <canvas id="ext-pose-canvas" class="ext-pose-canvas"></canvas>
+                <div class="ext-pose-idle-overlay" id="ext-pose-idle">
+                  <span class="ext-pose-idle-icon">⬡</span>
+                  <span class="ext-pose-idle-label">Starting camera…</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Pose snap reviews -->
+            <div class="ext-reviews-header">
+              <span class="ext-pose-eyebrow">Pose Snaps</span>
+            </div>
+            <div class="ext-reviews-list" id="ext-reviews-list">
+              <p class="fw-empty" id="ext-reviews-empty">Snaps appear at each section while webcam is on.</p>
+            </div>
+
+            <!-- Dance segments -->
             <div id="dance-segments">
               <p class="fw-empty">Generate a dance summary or open the full Practice workspace in Framewise.</p>
             </div>
@@ -1106,10 +1270,6 @@
           <option value="coach">Coach</option>
         </select>
       </label>
-      <label class="fw-dock-opt-label">
-        <input type="checkbox" id="dance-mode-input" />
-        <span>Dance tutor</span>
-      </label>
     </div>
     <form id="chat-form">
       <div class="composer-wrap">
@@ -1122,6 +1282,11 @@
     </form>
   </div>
 
+  <!-- TF.js WASM + MoveNet for extension pose tracking -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.22.0/dist/tf-core.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-wasm@4.22.0/dist/tf-backend-wasm.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter@4.22.0/dist/tf-converter.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js"></script>
   <script src="../config.js"></script>
   <script src="panel.js"></script>
 </body>

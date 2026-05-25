@@ -448,7 +448,7 @@ function renderOverlay(segments) {
         position: "absolute", left: pct + "%", top: "50%",
         transform: "translate(-50%, -50%)",
         width: "10px", height: "10px",
-        background: "#1A6B5A", border: "2px solid white",
+        background: "#C56A43", border: "2px solid rgba(255,242,220,0.85)",
         borderRadius: "50%", zIndex: "100",
         cursor: "pointer", pointerEvents: "auto",
         transition: "transform 0.1s", boxShadow: "0 1px 4px rgba(0,0,0,0.4)",
@@ -458,7 +458,7 @@ function renderOverlay(segments) {
       Object.assign(tooltip.style, {
         position: "absolute", bottom: "18px", left: "50%",
         transform: "translateX(-50%)",
-        background: "rgba(15,66,55,0.92)", color: "white",
+        background: "rgba(14,8,5,0.88)", color: "#fff7ed",
         padding: "4px 8px", borderRadius: "5px",
         fontSize: "11px", whiteSpace: "nowrap",
         pointerEvents: "none", opacity: "0", transition: "opacity 0.15s", zIndex: "101",

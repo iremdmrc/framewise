@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/layout/Layout";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
+import ExtensionPage from "./pages/ExtensionPage";
 import DashboardPage from "./pages/DashboardPage";
 import LibraryPage from "./pages/LibraryPage";
 import HistoryPage from "./pages/HistoryPage";
@@ -18,6 +19,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/extension" element={<ExtensionPage />} />
       <Route
         path="/app"
         element={user ? <Layout /> : <Navigate to="/login" replace />}

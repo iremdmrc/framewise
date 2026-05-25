@@ -14,8 +14,8 @@ const { listBookmarks, addBookmark, updateBookmark, deleteBookmark } = require("
 
 router.use(protect);
 
-// AI rate limit: 5 requests per minute per user
-const aiLimit = rateLimiter({ windowMs: 60_000, max: 5, message: "Too many AI requests — please wait a minute." });
+// AI rate limit: 15 requests per minute per user
+const aiLimit = rateLimiter({ windowMs: 60_000, max: 15, message: "Too many AI requests — please wait a minute." });
 
 // Non-parameterized routes
 router.post("/analyze",  aiLimit, timeout(180_000), analyzeVideo);
