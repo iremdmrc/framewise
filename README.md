@@ -1,30 +1,70 @@
 <p align="center">
-  <img src="frontend/src/assets/logo.jpg" alt="Framewise" width="120" />
+  <img src="frontend/src/assets/logo.jpg" alt="Framewise" width="132" />
 </p>
 
 <h1 align="center">Framewise</h1>
-<p align="center"><em>AI-powered video learning — timelines, practice, chat, and captions in one place.</em></p>
 
 <p align="center">
-  <img src="extension/icons/icon128.png" alt="Extension icon" width="48" />
+  <strong>AI-powered video learning for studying, captions, chat, and dance practice.</strong>
+  <br />
+  A connected web app + Chrome extension that turns YouTube videos into interactive learning workspaces.
+</p>
+
+<p align="center">
+  <a href="https://devpost.com/software/framwise"><strong>Devpost</strong></a>
+  ·
+  <a href="#local-setup"><strong>Local Setup</strong></a>
+  ·
+  <a href="#chrome-extension"><strong>Chrome Extension</strong></a>
+  ·
+  <a href="#api-reference"><strong>API Reference</strong></a>
+</p>
+
+<p align="center">
+  <img alt="HackHCC winner" src="https://img.shields.io/badge/HackHCC-Code%20Runners%20Winner-C56A43?style=for-the-badge" />
+  <img alt="MongoDB Atlas prize" src="https://img.shields.io/badge/Best%20Use-MongoDB%20Atlas-72875B?style=for-the-badge" />
+  <img alt="AI prize" src="https://img.shields.io/badge/Best%20Use-AI-473E74?style=for-the-badge" />
 </p>
 
 ---
 
-Framewise is a full-stack AI learning assistant built around YouTube videos. It has two connected surfaces — a **React web app** and a **Chrome extension** — that share the same backend, database, auth token, and AI pipeline.
+Framewise is a full-stack AI video assistant built around a simple idea: videos should be searchable, conversational, captioned, and practice-ready. It has two connected surfaces — a **React web app** and a **Chrome extension** — that share the same backend, MongoDB database, auth token, and AI pipeline.
 
 ## Hackathon Recognition
 
-Framewise was started for **HackHCC: Code Runners Hackathon** and won:
+Framewise started at **HackHCC: Code Runners Hackathon**, where it won:
 
 - **Best Use of MongoDB Atlas**
 - **Best Use of AI**
 
-Devpost: [framwise](https://devpost.com/software/framwise)
+Devpost: [Framewise on Devpost](https://devpost.com/software/framwise)
 
 ---
 
-## Features
+## At a Glance
+
+| Surface | What it does | Best for |
+|---|---|---|
+| **Web App** | Analyze videos, manage a library, chat with content, generate captions, notes, quizzes, and practice sessions | Deep study and full-screen practice |
+| **Chrome Extension** | Works directly on YouTube with timeline summaries, caption injection, quick notes/bookmarks, and practice links | Learning inside the video you are already watching |
+| **Shared AI Backend** | Gemini analysis/chat, ElevenLabs voice/STT, MongoDB persistence, async jobs, caching, and adaptive mode detection | One account and one AI memory across both products |
+
+## Contents
+
+- [Product Highlights](#product-highlights)
+- [Chrome Extension](#chrome-extension)
+- [Tech Stack](#tech-stack)
+- [Architecture](#architecture)
+- [Project Structure](#project-structure)
+- [Local Setup](#local-setup)
+- [Demo Flow](#demo-flow)
+- [Challenges & Technical Notes](#challenges--technical-notes)
+- [API Reference](#api-reference)
+- [Known Limitations](#known-limitations)
+
+---
+
+## Product Highlights
 
 ### Web App
 
@@ -169,6 +209,25 @@ Devpost: [framwise](https://devpost.com/software/framwise)
 
 ---
 
+## Architecture
+
+```mermaid
+flowchart LR
+  Web[React Web App] --> API[Express API]
+  Extension[Chrome Extension] --> API
+  API --> Mongo[(MongoDB Atlas)]
+  API --> Gemini[Gemini AI]
+  API --> Eleven[ElevenLabs]
+  Web --> Player[YouTube Player]
+  Extension --> YouTube[YouTube Page]
+  Web --> Pose[TensorFlow.js / MoveNet]
+  Extension --> Pose
+```
+
+Both entry points use the same auth model and API contracts. A video analyzed through the extension appears in the web library, and a video opened from the library can be continued through the extension.
+
+---
+
 ## Project Structure
 
 ```
@@ -217,6 +276,14 @@ framewise/
 ---
 
 ## Local Setup
+
+The app runs as three local pieces:
+
+| Piece | Default URL / location |
+|---|---|
+| Backend API | `http://localhost:3001` |
+| Web app | `http://localhost:5174` |
+| Chrome extension | Load unpacked from `extension/` |
 
 ### Prerequisites
 
@@ -342,7 +409,7 @@ db.videos.createIndex(
 
 1. `npm run dev` → confirm health check returns ok.
 2. Register a new account (or sign in with Google).
-3. Paste a YouTube URL on the Analyze page → watch the progress bar → timeline appears.
+3. Paste a YouTube URL on the dashboard → watch the progress bar → timeline appears.
 4. Click a segment timestamp → player seeks.
 5. Ask chat "Where does it explain the main concept?" → timestamped answer with jump button.
 6. Toggle voice on → confirm ElevenLabs audio plays.
@@ -356,11 +423,11 @@ db.videos.createIndex(
 14. Click **Open Practice Mode** → webcam prompt → green skeleton on your side, orange skeleton on the dancer's side.
 15. End the session → stats card shows body visibility %, avg joints, sections practiced → honest coach audio plays.
 16. Set mode override to Study Queue → confirm UI adapts.
-16. Refresh → continue-watching resumes from your last position.
-17. Load the extension, open the same YouTube video → timeline auto-loads.
-18. In the extension Practice tab → **Enable Camera** → webcam skeleton appears.
-19. Navigate between dance segments → pose snap review cards appear automatically.
-20. Toggle light / dark theme on both surfaces.
+17. Refresh → continue-watching resumes from your last position.
+18. Load the extension, open the same YouTube video → timeline auto-loads.
+19. In the extension Practice tab → **Enable Camera** → webcam skeleton appears.
+20. Navigate between dance segments → pose snap review cards appear automatically.
+21. Toggle light / dark theme on both surfaces.
 
 ---
 
